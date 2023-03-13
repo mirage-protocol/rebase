@@ -3,16 +3,10 @@ name = 'Rebase'
 version = '1.0.0'
 upgrade_policy = "immutable"
 
-[dependencies.SafeU64]
-git = "https://github.com/mirage-protocol/safe_u64.git"
-rev = "main"
-
-[dev-dependencies.AptosFramework]
-git = "https://github.coms/aptos-labs/aptos-core.git"
-subdir = "aptos-move/framework/aptos-framework/"
-rev = "main"
-addr_subst = { std = "0x2" }
-
 [addresses]
 rebase = "_"
 safe_u64 = "_"
+
+[dependencies.SafeU64]
+git = "https://github.com/mirage-protocol/safe_u64.git"
+rev = "main"
