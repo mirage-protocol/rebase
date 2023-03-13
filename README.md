@@ -8,7 +8,7 @@ A `Rebase { elastic: u64, base: u64 }` holds an `elastic` and a `base` part.
 * `elastic` is freely floating and can be modified
 * the ownership of some `base` part will remain a fixed percentage of the `total_elastic`, e.g.
 
-```move
+```rust
 (my_base_part / total_base) * total_elastic = my_portion
 ```
 
@@ -16,7 +16,7 @@ A `Rebase { elastic: u64, base: u64 }` holds an `elastic` and a `base` part.
 
 Rebase numbers have many interesting use cases, for example if we define:
 
-```move
+```rust
 my_basket_rebase = Rebase { 
     elastic: coin::value(some_basket_of_coin),
     base: 100,
@@ -27,7 +27,7 @@ We now have `100` base parts which each represent ownership over `1%` of `basket
 
 If we define a function:
 
-```move
+```rust
 fun add_to_basket(coin: Coin<C>) {
     rebase::increase_elastic(
         &mut my_basket_rebase,
