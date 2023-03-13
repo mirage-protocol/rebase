@@ -1,6 +1,6 @@
 /// Manages elastically rebasing numbers
 module rebase::rebase {
-    use safe_u64::math::muldiv_64;
+    use safe_u64::safe_u64::muldiv_64;
 
     #[test_only]
     const MAX_U64: u128 = 18446744073709551615;
