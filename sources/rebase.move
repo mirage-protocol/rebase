@@ -1,4 +1,4 @@
-///a Manages elastically rebasing numbers
+/// Manages elastically rebasing numbers
 module rebase::rebase {
     #[test_only]
     use std::signer::address_of;
