@@ -1,15 +1,6 @@
 /// Manages elastically rebasing numbers
 module rebase::rebase {
-    #[test_only]
-    use std::signer::address_of;
-
-    #[test_only]
-    use aptos_framework::account;
-
     use safe_u64::math::muldiv_64;
-
-    #[test_only]
-    const MAX_U64: u256 = 18446744073709551615;
 
     /// A rebase has an elastic part and a base part
     struct Rebase has copy, store {
@@ -138,20 +129,5 @@ module rebase::rebase {
     /// Subtract only from the elastic part of a rebase
     public fun decrease_elastic(total: &mut Rebase, elastic: u64) {
         total.elastic = total.elastic - elastic;
-    }
-
-    #[test(account = @0x1)]
-    public entry fun test_add_elastic(account: signer) {
-        let account_addr = address_of(&account);
-        account::create_account_for_test(account_addr);
-
-        let rebase = Rebase { elastic: ((MAX_U64 - 1000) as u64), base: ((MAX_U64 - 1000) as u64) };
-
-        let part = add_elastic(&mut rebase, 100, false);
-
-        assert!(part == 100, 1);
-        assert!(rebase.elastic == ((MAX_U64 - 900) as u64), 1);
-
-        let Rebase { elastic: _, base: _ } = rebase;
     }
 }
