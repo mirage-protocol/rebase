@@ -8,7 +8,7 @@ A `Rebase { elastic: u64, base: u64 }` holds an `elastic` and a `base` part.
 * `elastic` is freely floating and can be modified
 * the ownership of some `base` part will remain a fixed percentage of the `total_elastic`, e.g.
 
-```
+```move
 (my_base_part / total_base) * total_elastic = my_portion
 ```
 
