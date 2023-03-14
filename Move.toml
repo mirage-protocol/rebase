@@ -3,9 +3,9 @@ name = 'Rebase'
 version = '1.0.0'
 upgrade_policy = "immutable"
 
-[addresses]
-rebase = "_"
-
 [dependencies.SafeU64]
 git = "https://github.com/mirage-protocol/safe_u64.git"
-rev = "main"
+rev = "v1.0.0"
+
+[addresses]
+rebase = "0xa90a92e8e358fae87489a01dd1970572ca8316a66827cff3147743bca5ce2a63"
