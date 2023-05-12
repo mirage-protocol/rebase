@@ -1,11 +1,11 @@
 [package]
 name = 'Rebase'
-version = '1.0.0'
+version = '1.0.1'
 upgrade_policy = "compatible"
 
-[dependencies.SafeU64]
+[dependencies.Safe64]
 git = "https://github.com/mirage-protocol/safe_u64.git"
-rev = "v1.0.0"
+rev = "dev"
 
 [addresses]
-rebase = "0xdba5a1e5ec2b1e0b533720c63fd2119cd3ee347ea6bbbd1bca3306c08c8d8872"
+rebase = "0xf429558f9598ee1fa34eb9af4ea8cdc63b828dd0710f5f1bc435887c89099cba"
