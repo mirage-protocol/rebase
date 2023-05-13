@@ -66,6 +66,20 @@ module rebase::rebase {
         Base { amount }
     }
 
+    /// Extract all from Base
+    public fun extract_all_base(dst_base: &mut Base): Base {
+        let amount = dst_base.amount;
+        dst_base.amount = 0;
+        Base { amount }
+    }
+
+    /// Extract all from Elastic
+    public fun extract_all_elastic(dst_elastic: &mut Elastic): Elastic {
+        let amount = dst_elastic.amount;
+        dst_elastic.amount = 0;
+        Elastic { amount }
+    }
+
     /// Get the amount in an Elastic
     public fun get_elastic_amount(elastic: &Elastic): u64 {
         elastic.amount
