@@ -66,6 +66,16 @@ module rebase::rebase {
         Base { amount }
     }
 
+    /// Get the amount in an Elastic
+    public fun get_elastic_amount(elastic: &Elastic): u64 {
+        elastic.amount
+    }
+
+    /// Get the amount in a Base
+    public fun get_base_amount(base: &Base): u64 {
+        base.amount
+    }
+
     /// Get elastic rebase part
     public fun get_elastic(rebase: &Rebase): u64 {
         rebase.elastic
