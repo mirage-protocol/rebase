@@ -173,41 +173,16 @@ module rebase::rebase {
         rebase.elastic = rebase.elastic - elastic;
     }
 
-    /// Add only to the base part of a rebase
-    /// The amount of elastic per base part will decrease
-    ///
-    /// Note: No new Elastic is created, all current Elastic holders 
-    /// will have their elastic increase
-    public fun increase_base(rebase: &mut Rebase, base: u64) {
-        rebase.base = rebase.base + base;
-    }
-
-    /// Subtract only from the base part of a rebase
-    /// The amount of elastic per base part will increase
-    public fun decrease_base(rebase: &mut Rebase, base: u64) {
-        rebase.base = rebase.base - base;
-    }
-
-    /// Add an elastic and a base to a rebase
-    /// The amount of elastic per base part will potentially change
-    public fun increase_elastic_and_base(
-        rebase: &mut Rebase,
-        elastic: u64,
-        base: u64
-    ) {
-        rebase.elastic = rebase.elastic + elastic;
-        rebase.base = rebase.base + base;
-    }
-
     /// Subtract an elastic and base from a rebase
     /// The amount of elastic per base part will potentially change
     public fun decrease_elastic_and_base(
         rebase: &mut Rebase,
         elastic: u64,
-        base: u64
+        base: Base,
     ) {
+        let Base { amount } = base;
         rebase.elastic = rebase.elastic - elastic;
-        rebase.base = rebase.base - base;
+        rebase.base = rebase.base - amount;
     }
 
     /// Returns the amount of base for the given elastic
