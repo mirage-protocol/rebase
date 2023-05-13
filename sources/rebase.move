@@ -3,14 +3,14 @@ module rebase::rebase {
     use safe64::safe64;
 
     /// An elastic part of a rebase that has been created and
-    /// must be accounted for
+    /// This must always be accounted for
     struct Elastic has store {
         /// The amount of elastic part
         amount: u64,
     }
 
     /// A base part of a rebase that has been created and
-    /// must be accounted for
+    /// This must always be accounted for
     struct Base has store {
         /// The amount of base part
         amount: u64,
@@ -114,35 +114,6 @@ module rebase::rebase {
         Base { amount: base }
     }
 
-    /// Accepts Elastic to sub from a rebase
-    /// Keeps the amount of elastic per base constant
-    /// Returns the amount of base that has been destroyed
-    public fun sub_elastic(
-        rebase: &mut Rebase,
-        elastic: Elastic,
-        round_up: bool
-    ): u64 {
-        let Elastic { amount } = elastic;
-        let base = elastic_to_base(rebase, amount, round_up);
-        rebase.elastic = rebase.elastic - amount;
-        rebase.base = rebase.base - base;
-        base
-    }
-
-    /// Add base to a rebase
-    /// Keeps the amount of elastic per base constant
-    /// Returns the newly created Elastic
-    public fun add_base(
-        rebase: &mut Rebase,
-        base: u64,
-        round_up: bool
-    ): Elastic {
-        let elastic = base_to_elastic(rebase, base, round_up);
-        rebase.elastic = rebase.elastic + elastic;
-        rebase.base = rebase.base + base;
-        Elastic { amount: elastic }
-    }
-
     /// Accepts Base to sub from a rebase
     /// Keeps the amount of elastic per base constant
     /// Returns the amount of elastic that has been destroyed
@@ -156,6 +127,25 @@ module rebase::rebase {
         rebase.elastic = rebase.elastic - elastic;
         rebase.base = rebase.base - amount;
         elastic
+    }
+
+    /// Accepts Elastic to sub from a rebase
+    /// Keeps the amount of elastic per base constant
+    /// Reduces base_to_reduce and return the remaining amount
+    ///
+    /// The given base_to_reduce must have an amount greater
+    /// than the base to be destroyed
+    public fun sub_elastic(
+        rebase: &mut Rebase,
+        base_to_reduce: &mut Base,
+        elastic: u64,
+        round_up: bool
+    ): u64 {
+        let base = elastic_to_base(rebase, elastic, round_up);
+        rebase.elastic = rebase.elastic - elastic;
+        rebase.base = rebase.base - base;
+        base_to_reduce.amount = base_to_reduce.amount - base;
+        base
     }
 
     /// Add only to the elastic part of a rebase
