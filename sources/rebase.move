@@ -32,6 +32,40 @@ module rebase::rebase {
         }
     }
 
+    /// Get a zero value elastic
+    public fun zero_elastic(): Elastic {
+        Elastic { amount: 0 }
+    }
+
+    /// Get a zero value base
+    public fun zero_base(): Base {
+        Base { amount: 0 }
+    }
+
+    /// Merge two elastic
+    public fun merge_elastic(dst_elastic: &mut Elastic, elastic: Elastic) {
+        let Elastic { amount } = elastic;
+        dst_elastic.amount = dst_elastic.amount + amount;
+    }
+
+    /// Extract from an elastic
+    public fun extract_elastic(dst_elastic: &mut Elastic, amount: u64): Elastic {
+        dst_elastic.amount = dst_elastic.amount - amount;
+        Elastic { amount }
+    }
+
+    /// Merge two base
+    public fun merge_base(dst_base: &mut Base, base: Base) {
+        let Base { amount } = base;
+        dst_base.amount = dst_base.amount + amount;
+    }
+
+    /// Extract from a base
+    public fun extract_base(dst_base: &mut Base, amount: u64): Base {
+        dst_base.amount = dst_base.amount - amount;
+        Base { amount }
+    }
+
     /// Get elastic rebase part
     public fun get_elastic(rebase: &Rebase): u64 {
         rebase.elastic
