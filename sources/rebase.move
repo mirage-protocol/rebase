@@ -1,27 +1,53 @@
-/// Manages elastically rebasing numbers
+/// Elastically rebasing numbers
 module rebase::rebase {
     use safe64::safe64;
 
-    /// An elastic part of a rebase that has been created and
-    /// This must always be accounted for
-    struct Elastic has store {
-        /// The amount of elastic part
-        amount: u64,
-    }
-
-    /// A base part of a rebase that has been created and
-    /// This must always be accounted for
-    struct Base has store {
-        /// The amount of base part
-        amount: u64,
-    }
-
     /// A rebase has an elastic part and a base part
+    ///
+    /// The general idea is that the base part represents ownership
+    /// over the elastic part, which is a free-floating value
+    ///
+    /// Ownership value can be calculated as:
+    /// base_part * total_elastic / total_base
+    /// 
+    /// Therefore it is the ratio of the elastic and base that
+    /// determines how much one "share" of base is worth.
+    ///
+    /// In general, rebases will be updated with add_elastic(),
+    /// which adds new elastic at the same ratio. This is equivalent
+    /// to a new owner "buying in" and the newly created Base
+    /// shares must be accounted for.
+    ///
+    /// When ownership is destroyed, sub_base() is called,
+    /// which destroys a Base part and reduces elastic, keeping
+    /// the total ratio of the rebase the same. This is equivalent to
+    /// an owner taking their elastic out, and renouncing their shares.
+    ///
+    /// Note: in the above scenarios, the ratio of the rebase is constant
+    ///
+    /// The functions increase_elastic(), decrease_elastic() modify
+    /// the free floating elastic value and will alter the value
+    /// of "one share"
+    ///
+    /// Elastic is more or less a freely modifiable
+    /// value, whereas base ownership is tracked and accounted for
+    /// with Base
     struct Rebase has store {
         /// The elastic part can change independant of the base
         elastic: u64,
         /// Base parts represent a fixed portion of the elastic
         base: u64,
+    }
+
+    /// Represents base ownership of a rebase. Whenever
+    /// elastic part is added into a rebase (at a constant ratio),
+    /// new Base must be created and accounted for.
+    ///
+    /// To remove Base from a rebase, Base must
+    /// be passed to sub_base()
+    struct Base has store {
+        /// The amount of base part
+        amount: u64,
     }
 
     /// Get zero rebase
@@ -32,26 +58,9 @@ module rebase::rebase {
         }
     }
 
-    /// Get a zero value elastic
-    public fun zero_elastic(): Elastic {
-        Elastic { amount: 0 }
-    }
-
     /// Get a zero value base
     public fun zero_base(): Base {
         Base { amount: 0 }
-    }
-
-    /// Merge two elastic
-    public fun merge_elastic(dst_elastic: &mut Elastic, elastic: Elastic) {
-        let Elastic { amount } = elastic;
-        dst_elastic.amount = dst_elastic.amount + amount;
-    }
-
-    /// Extract from an elastic
-    public fun extract_elastic(dst_elastic: &mut Elastic, amount: u64): Elastic {
-        dst_elastic.amount = dst_elastic.amount - amount;
-        Elastic { amount }
     }
 
     /// Merge two base
@@ -71,18 +80,6 @@ module rebase::rebase {
         let amount = dst_base.amount;
         dst_base.amount = 0;
         Base { amount }
-    }
-
-    /// Extract all from Elastic
-    public fun extract_all_elastic(dst_elastic: &mut Elastic): Elastic {
-        let amount = dst_elastic.amount;
-        dst_elastic.amount = 0;
-        Elastic { amount }
-    }
-
-    /// Get the amount in an Elastic
-    public fun get_elastic_amount(elastic: &Elastic): u64 {
-        elastic.amount
     }
 
     /// Get the amount in a Base
@@ -129,9 +126,10 @@ module rebase::rebase {
         elastic
     }
 
-    /// Accepts Elastic to sub from a rebase
+    /// Accepts an elastic amount to sub from a rebase
+    /// and a Base to reduce.
     /// Keeps the amount of elastic per base constant
-    /// Reduces base_to_reduce and return the remaining amount
+    /// Reduces base_to_reduce and return the reduced amount
     ///
     /// The given base_to_reduce must have an amount greater
     /// than the base to be destroyed
@@ -245,13 +243,6 @@ module rebase::rebase {
     /// Destroy a rebase
     fun destroy(rebase: Rebase) {
         let Rebase { elastic: _, base: _ } = rebase;
-    }
-
-    #[test_only]
-    /// Destroy an elastic part and get its value
-    fun destroy_elastic(elastic: Elastic): u64 {
-        let Elastic { amount } = elastic;
-        amount
     }
 
     #[test_only]
