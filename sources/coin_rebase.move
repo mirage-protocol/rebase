@@ -1,4 +1,4 @@
-/// Elastically rebasing numbers
+/// A rebase that stores Coin
 module rebase::coin_rebase {
     use aptos_framework::coin::{Self, Coin};
 
