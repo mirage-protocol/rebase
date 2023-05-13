@@ -2,8 +2,22 @@
 module rebase::rebase {
     use safe64::safe64;
 
+    /// An elastic part of a rebase that has been created and
+    /// must be accounted for
+    struct Elastic has store {
+        /// The amount of elastic part
+        amount: u64,
+    }
+
+    /// A base part of a rebase that has been created and
+    /// must be accounted for
+    struct Base has store {
+        /// The amount of base part
+        amount: u64,
+    }
+
     /// A rebase has an elastic part and a base part
-    struct Rebase has copy, store {
+    struct Rebase has store {
         /// The elastic part can change independant of the base
         elastic: u64,
         /// Base parts represent a fixed portion of the elastic
@@ -11,110 +25,131 @@ module rebase::rebase {
     }
 
     /// Get zero rebase
-    public fun zero_rebase(): Rebase { Rebase { elastic: 0, base: 0 } }
+    public fun zero_rebase(): Rebase {
+        Rebase {
+            elastic: 0,
+            base: 0
+        }
+    }
 
     /// Get elastic rebase part
-    public fun get_elastic(rebase: &Rebase): u64 { rebase.elastic }
+    public fun get_elastic(rebase: &Rebase): u64 {
+        rebase.elastic
+    }
 
     /// Get base rebase part
-    public fun get_base(rebase: &Rebase): u64 { rebase.base }
+    public fun get_base(rebase: &Rebase): u64 {
+        rebase.base
+    }
 
-    /// Update a rebase given a new copy
-    public fun update_rebase(dst_rebase: &mut Rebase, source: Rebase) {
-        let Rebase { elastic, base } = source;
-        dst_rebase.elastic = elastic;
-        dst_rebase.base = base;
+    /// Add elastic to a rebase
+    /// Keeps the amount of elastic per base constant
+    /// Returns the newly created Base
+    public fun add_elastic(
+        rebase: &mut Rebase,
+        elastic: u64,
+        round_up: bool
+    ): Base {
+        let base = elastic_to_base(rebase, elastic, round_up);
+        rebase.elastic = rebase.elastic + elastic;
+        rebase.base = rebase.base + base;
+        Base { amount: base }
+    }
+
+    /// Accepts Elastic to sub from a rebase
+    /// Keeps the amount of elastic per base constant
+    /// Returns the amount of base that has been destroyed
+    public fun sub_elastic(
+        rebase: &mut Rebase,
+        elastic: Elastic,
+        round_up: bool
+    ): u64 {
+        let Elastic { amount } = elastic;
+        let base = elastic_to_base(rebase, amount, round_up);
+        rebase.elastic = rebase.elastic - amount;
+        rebase.base = rebase.base - base;
+        base
+    }
+
+    /// Add base to a rebase
+    /// Keeps the amount of elastic per base constant
+    /// Returns the newly created Elastic
+    public fun add_base(
+        rebase: &mut Rebase,
+        base: u64,
+        round_up: bool
+    ): Elastic {
+        let elastic = base_to_elastic(rebase, base, round_up);
+        rebase.elastic = rebase.elastic + elastic;
+        rebase.base = rebase.base + base;
+        Elastic { amount: elastic }
+    }
+
+    /// Accepts Base to sub from a rebase
+    /// Keeps the amount of elastic per base constant
+    /// Returns the amount of elastic that has been destroyed
+    public fun sub_base(
+        rebase: &mut Rebase,
+        base: Base,
+        round_up: bool
+    ): u64 {
+        let Base { amount } = base;
+        let elastic = base_to_elastic(rebase, amount, round_up);
+        rebase.elastic = rebase.elastic - elastic;
+        rebase.base = rebase.base - amount;
+        elastic
     }
 
     /// Add only to the elastic part of a rebase
     /// The amount of elastic per base part will increase
-    public fun increase_elastic(total: &mut Rebase, elastic: u64) {
-        total.elastic = total.elastic + elastic;
+    ///
+    /// Note: No new Base is created, all current Base holders 
+    /// will have their elastic increase
+    public fun increase_elastic(rebase: &mut Rebase, elastic: u64) {
+        rebase.elastic = rebase.elastic + elastic;
     }
 
     /// Subtract only from the elastic part of a rebase
     /// The amount of elastic per base part will decrease
-    public fun decrease_elastic(total: &mut Rebase, elastic: u64) {
-        total.elastic = total.elastic - elastic;
+    public fun decrease_elastic(rebase: &mut Rebase, elastic: u64) {
+        rebase.elastic = rebase.elastic - elastic;
     }
 
     /// Add only to the base part of a rebase
     /// The amount of elastic per base part will decrease
-    public fun increase_base(total: &mut Rebase, base: u64) {
-        total.base = total.base + base;
+    ///
+    /// Note: No new Elastic is created, all current Elastic holders 
+    /// will have their elastic increase
+    public fun increase_base(rebase: &mut Rebase, base: u64) {
+        rebase.base = rebase.base + base;
     }
 
     /// Subtract only from the base part of a rebase
     /// The amount of elastic per base part will increase
-    public fun decrease_base(total: &mut Rebase, base: u64) {
-        total.base = total.base - base;
+    public fun decrease_base(rebase: &mut Rebase, base: u64) {
+        rebase.base = rebase.base - base;
     }
 
     /// Add an elastic and a base to a rebase
     /// The amount of elastic per base part will potentially change
     public fun increase_elastic_and_base(
-        total: &mut Rebase,
+        rebase: &mut Rebase,
         elastic: u64,
         base: u64
     ) {
-        increase_elastic(total, elastic);
-        increase_base(total, base);
+        rebase.elastic = rebase.elastic + elastic;
+        rebase.base = rebase.base + base;
     }
 
     /// Subtract an elastic and base from a rebase
     /// The amount of elastic per base part will potentially change
     public fun decrease_elastic_and_base(
-        total: &mut Rebase,
+        rebase: &mut Rebase,
         elastic: u64,
         base: u64
     ) {
-        decrease_elastic(total, elastic);
-        decrease_base(total, base);
-    }
-
-
-    /// Add elastic to a rebase, keeping
-    /// the amount of elastic per base part constant
-    /// Returns the amount of new base that has been created
-    public fun add_elastic(rebase: &mut Rebase, elastic: u64, round_up: bool): u64 {
-        let base = elastic_to_base(rebase, elastic, round_up);
-        increase_elastic_and_base(rebase, elastic, base);
-        base
-    }
-
-    /// Sub an elastic value from a rebase, keeping
-    /// the amount of elastic per base part constant
-    /// Returns the amount of base that has been destroyed
-    public fun sub_elastic(rebase: &mut Rebase, elastic: u64, round_up: bool): u64 {
-        let base = elastic_to_base(rebase, elastic, round_up);
-        decrease_elastic_and_base(rebase, elastic, base);
-        base
-    }
-
-    /// Add base from to rebase, keeping
-    /// the amount of elastic per base part constant
-    /// Returns the amount of elastic that has been created
-    public fun add_base(
-        rebase: &mut Rebase,
-        base: u64,
-        round_up: bool
-    ): u64 {
-        let elastic = base_to_elastic(rebase, base, round_up);
-        increase_elastic_and_base(rebase, elastic, base);
-        elastic
-    }
-
-    /// Remove base from a rebase, keeping
-    /// the amount of elastic per base part constant
-    /// Returns the amount of elastic that has been destroyed
-    public fun sub_base(
-        rebase: &mut Rebase,
-        base: u64,
-        round_up: bool
-    ): u64 {
-        let elastic = base_to_elastic(rebase, base, round_up);
-        decrease_elastic_and_base(rebase, elastic, base);
-        elastic
+        rebase.elastic = rebase.elastic - elastic;
+        rebase.base = rebase.base - base;
     }
 
     /// Returns the amount of base for the given elastic
@@ -125,7 +160,8 @@ module rebase::rebase {
         new_elastic: u64,
         round_up: bool
     ): u64 {
-        let Rebase { elastic, base } = *rebase;
+        let elastic = rebase.elastic;
+        let base = rebase.base;
 
         let new_base_part: u64;
         if (elastic == 0 || base == 0) {
@@ -151,7 +187,8 @@ module rebase::rebase {
         new_base_part: u64,
         round_up: bool
     ): u64 {
-        let Rebase { elastic, base } = *rebase;
+        let elastic = rebase.elastic;
+        let base = rebase.base;
 
         let new_elastic: u64;
         if (base == 0) {
@@ -182,8 +219,23 @@ module rebase::rebase {
     const MAX_U128: u128 = 340282366920938463463374607431768211455;
 
     #[test_only]
+    /// Destroy a rebase
     fun destroy(rebase: Rebase) {
         let Rebase { elastic: _, base: _ } = rebase;
+    }
+
+    #[test_only]
+    /// Destroy an elastic part and get its value
+    fun destroy_elastic(elastic: Elastic): u64 {
+        let Elastic { amount } = elastic;
+        amount
+    }
+
+    #[test_only]
+    /// Destroy a base part and get its value
+    fun destroy_base(base: Base): u64 {
+        let Base { amount } = base;
+        amount
     }
 
     #[test]
@@ -202,7 +254,9 @@ module rebase::rebase {
             base: 10 * high_precision
         };
 
-        add_elastic(&mut rebase, 1000 * high_precision, false);
+        let base = add_elastic(&mut rebase, 1000 * high_precision, false);
+
+        assert!(destroy_base(base) == 10 * high_precision, 1);
 
         let Rebase { elastic, base } = rebase;
         assert!(elastic == 2000 * high_precision, 1);
@@ -213,8 +267,9 @@ module rebase::rebase {
     fun test_add_elastic_overflow() {
         let almost_max = ((MAX_U64 - 1) as u64);
         let rebase = Rebase { elastic: almost_max, base: almost_max };
-        add_elastic(&mut rebase, 1000, false);
+        let base = add_elastic(&mut rebase, 1000, false);
         destroy(rebase);
+        destroy_base(base);
     }
 
     #[test]
@@ -222,45 +277,49 @@ module rebase::rebase {
 
         // ownership is created
         let rebase = zero_rebase();
-        add_elastic(&mut rebase, 1000, false);
+        let new_base = add_elastic(&mut rebase, 1000, false);
 
         let Rebase { elastic, base } = rebase;
         assert!(elastic == 1000, 1);
         assert!(base == 1000, 1);
+        assert!(destroy_base(new_base) == 1000, 1);
 
         // there is no ownership of the 1000
         // adding elastic gives ownership but not of the original part
         rebase = Rebase { elastic: 1000, base: 0 };
-        add_elastic(&mut rebase, 1000, false);
+        new_base = add_elastic(&mut rebase, 1000, false);
 
         let Rebase { elastic, base } = rebase;
         assert!(elastic == 2000, 1);
         assert!(base == 1000, 1);
+        assert!(destroy_base(new_base) == 1000, 1);
 
         // there was nothing to own
         rebase = Rebase { elastic: 0, base: 1000 };
-        add_elastic(&mut rebase, 1000, false);
+        let new_base = add_elastic(&mut rebase, 1000, false);
 
         let Rebase { elastic, base } = rebase;
         assert!(elastic == 1000, 1);
         assert!(base == 2000, 1);
+        assert!(destroy_base(new_base) == 1000, 1);
     }
 
     #[test]
     fun test_sub_base() {
         let rebase = Rebase { elastic: 1000, base: 10 };
 
-        sub_base(&mut rebase, 5, false);
+        let subbed_elastic = sub_base(&mut rebase, Base { amount: 5 }, false);
 
         let Rebase { elastic, base } = rebase;
         assert!(elastic == 500, 1);
         assert!(base == 5, 1);
+        assert!(subbed_elastic == 500, 1);
     }
 
     #[test, expected_failure]
     fun test_sub_base_underflow() {
         let rebase = Rebase { elastic: 1000, base: 10 };
-        sub_base(&mut rebase, 1000, false);
+        sub_base(&mut rebase, Base { amount: 1000 }, false);
         destroy(rebase);
     }
 
@@ -269,27 +328,30 @@ module rebase::rebase {
 
         // ownership is created
         let rebase = Rebase { elastic: 1000, base: 1000 };
-        sub_base(&mut rebase, 1000, false);
+        let subbed_elastic = sub_base(&mut rebase, Base { amount: 1000}, false);
 
         let Rebase { elastic, base } = rebase;
         assert!(elastic == 0, 1);
         assert!(base == 0, 1);
+        assert!(subbed_elastic == 1000, 1);
 
         // there is no nothing owned
         rebase = Rebase { elastic: 0, base: 1000 };
-        sub_base(&mut rebase, 1000, false);
+        let subbed_elastic = sub_base(&mut rebase, Base { amount: 1000 }, false);
 
         let Rebase { elastic, base } = rebase;
         assert!(elastic == 0, 1);
         assert!(base == 0, 1);
+        assert!(subbed_elastic == 0, 1);
 
         // there are no owners
         rebase = Rebase { elastic: 1000, base: 0 };
-        sub_base(&mut rebase, 0, false);
+        let subbed_elastic = sub_base(&mut rebase, Base { amount: 0 }, false);
 
         let Rebase { elastic, base } = rebase;
         assert!(elastic == 1000, 1);
         assert!(base == 0, 1);
+        assert!(subbed_elastic == 0, 1);
     }
 
     #[test]
@@ -301,16 +363,18 @@ module rebase::rebase {
             base: 10 * high_precision
         };
 
-        add_elastic(&mut rebase, 1000 * high_precision, false);
+        let new_base = add_elastic(&mut rebase, 1000 * high_precision, false);
 
         assert!(rebase.elastic == 2000 * high_precision, 1);
         assert!(rebase.base == 20 * high_precision, 1);
+        assert!(destroy_base(new_base) == 10 * high_precision, 1);
 
-        sub_base(&mut rebase, 15 * high_precision, false);
+        let subbed_elastic = sub_base(&mut rebase, Base { amount: 15 * high_precision }, false);
 
         let Rebase { elastic, base } = rebase;
         assert!(elastic == 500 * high_precision, 1);
         assert!(base == 5 * high_precision, 1);
+        assert!(subbed_elastic == 1500 * high_precision, 1);
     }
 
     #[test]
@@ -377,17 +441,4 @@ module rebase::rebase {
 
         destroy(rebase);
     }
-
-    #[test]
-    fun test_update_rebase() {
-        let rebase = Rebase { elastic: 50, base: 10 };
-        let new = Rebase { elastic: 100, base: 100 };
-
-        update_rebase(&mut rebase, new);
-
-        let Rebase { elastic, base } = rebase;
-        assert!(elastic == 100, 1);
-        assert!(base == 100, 1);
-    }
-
 }
