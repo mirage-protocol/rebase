@@ -11,6 +11,15 @@ A `Rebase { elastic: u64, base: u64 }` holds an `elastic` and a `base` part.
 ```rust
 (my_base_part / total_base) * total_elastic = my_portion
 ```
+## How to Use
+
+Add to `Move.toml`:
+
+```toml
+[dependencies.Rebase]
+git = "https://github.com/mirage-protocol/rebase.git"
+rev = "main"
+```
 
 ## Example: CoinRebase
 
