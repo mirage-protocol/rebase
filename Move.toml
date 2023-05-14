@@ -1,11 +1,16 @@
 [package]
 name = 'Rebase'
-version = '1.0.0'
+version = '1.1.0'
 upgrade_policy = "immutable"
 
-[dependencies.SafeU64]
-git = "https://github.com/mirage-protocol/safe_u64.git"
-rev = "v1.0.0"
+[dependencies.AptosFramework]
+git = "https://github.com/aptos-labs/aptos-core.git"
+subdir = "aptos-move/framework/aptos-framework/"
+rev = "main"
+
+[dependencies.Safe64]
+git = "https://github.com/mirage-protocol/safe64.git"
+rev = "main"
 
 [addresses]
-rebase = "0xa90a92e8e358fae87489a01dd1970572ca8316a66827cff3147743bca5ce2a63"
+rebase = "0xf4198d362f5e8ee6eadcf3268eef1f89224ef7826245de1970bf26c07bc2623c"

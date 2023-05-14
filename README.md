@@ -1,6 +1,6 @@
 # Rebase
 
-A pure move library for elastic `u64` numbers.
+A pure move library for elastic numbers.
 
 A `Rebase { elastic: u64, base: u64 }` holds an `elastic` and a `base` part.
 
@@ -12,34 +12,57 @@ A `Rebase { elastic: u64, base: u64 }` holds an `elastic` and a `base` part.
 (my_base_part / total_base) * total_elastic = my_portion
 ```
 
-## Example
+## Example: CoinRebase
 
-Rebase numbers have many interesting use cases, for example if we define:
-
-```rust
-my_basket_rebase = Rebase { 
-    elastic: coin::value(some_basket_of_coin),
-    base: 100,
-}
-```
-
-We now have `100` base parts which each represent ownership over `1%` of `basket_of_coin`.
-
-If we define a function:
+Rebase numbers have many interesting use cases. If we have a situation where we want to represent ownership of some `Coin<CoinType>` we can use a `CoinRebase`
 
 ```rust
-fun add_to_basket(coin: Coin<C>) {
-    rebase::increase_elastic(
-        &mut my_basket_rebase,
-        coin::value(&coin)
-    )
-    coin::merge(&mut some_basket_of_coin, coin);
-}
+// create an empty rebase
+let rebase = coin_rebase::zero_rebase<CoinType>();
+
+// get some coin
+let my_deposit: Coin<CoinType> = coin::withdraw<CoinType>(my_account, 1_000_000);
+
+// add the coin as elastic part
+// this function returns new "Base" which represent ownership shares
+let base_shares: Base<CoinType> = coin_rebase::add_elastic<CoinType>(
+    &mut rebase,
+    my_deposit,
+);
+
+// we can calculate the coin value of the Base we just created
+let calculated_base_to_coin: u64 = coin_rebase::base_to_elastic<CoinType>(
+    &rebase,
+    coin_rebase::get_base_amount(base_shares),
+    false, // don't round up
+);
+
+// as expected, the calculated coin value is the original deposit!
+assert!(calculated_base_to_coin == 1_000_000, ERROR);
+
+// ============
+
+// we can also add new Coin (elastic) without creating new ownership (Base)
+// this will increase the coin value of all Base shares
+coin_rebase::increase_elastic<CoinType>(
+    &mut rebase,
+    coin::withdraw<CoinType>(other_account, 500_000),
+);
+
+// now if we recalculate the worth of our base shares now
+calculated_base_to_coin = coin_rebase::base_to_elastic<CoinType>(
+    &rebase,
+    coin_rebase::get_base_amount(base_shares),
+    false, // don't round up
+);
+
+// we can see the value of the shares has increased!
+assert!(calculated_base_to_coin == 1_500_000, ERROR);
 ```
 
-Then as `coin`'s are added through `add_to_basket(coin)`, each of the `100` base parts continue to represent `1%` of the assets in `some_basket_of_coins`. The ownership "elastically increases" without need for any tallying. 
+Then as `Coin<CoinType>`'s are added to the rebase, each of the base parts net coin value will continue to increase.
 
-This is useful for handling a large number of owners over a pool of resources.
+This kind of structure is useful for many sorts of situations when multiple users own a pool of assets. `CoinRebase` (and `Rebase`) expose useful functions that make operations like taking interest, taking fees, distributing rewards, etc. extremely simple.
 
 ## License
 
