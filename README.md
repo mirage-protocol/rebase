@@ -1,6 +1,6 @@
 # Rebase
 
-A pure move library for elastic numbers.
+A move library for elastic numbers.
 
 A `Rebase { elastic: u64, base: u64 }` holds an `elastic` and a `base` part.
 
