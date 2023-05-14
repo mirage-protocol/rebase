@@ -11,6 +11,7 @@ A `Rebase { elastic: u64, base: u64 }` holds an `elastic` and a `base` part.
 ```rust
 (my_base_part / total_base) * total_elastic = my_portion
 ```
+
 ## How to Use
 
 Add to `Move.toml`:
@@ -19,6 +20,15 @@ Add to `Move.toml`:
 [dependencies.Rebase]
 git = "https://github.com/mirage-protocol/rebase.git"
 rev = "main"
+```
+
+And then use in your `.move` file:
+
+```rust
+use rebase::rebase;
+use rebase::coin_rebase;
+
+...
 ```
 
 ## Example: CoinRebase
@@ -49,7 +59,7 @@ let calculated_base_to_coin: u64 = coin_rebase::base_to_elastic<CoinType>(
 // as expected, the calculated coin value is the original deposit!
 assert!(calculated_base_to_coin == 1_000_000, ERROR);
 
-// ============
+// ------------
 
 // we can also add new Coin (elastic) without creating new ownership (Base)
 // this will increase the coin value of all Base shares
@@ -67,6 +77,23 @@ calculated_base_to_coin = coin_rebase::base_to_elastic<CoinType>(
 
 // we can see the value of the shares has increased!
 assert!(calculated_base_to_coin == 1_500_000, ERROR);
+
+// ------------
+
+// we can also renounce base ownership and get our coins back!
+let returned_coin = coin_rebase::sub_base<CoinType>(
+    &mut rebase,
+    base_shares,
+    false, // don't round up
+);
+
+// we can see the value of the returned coin is what we calculated earlier!
+assert!(calculated_base_to_coin, coin::value(&returned_coin));
+
+// The user was able to redeem the same base_shares we created
+// at the very start for their initial deposit plus an extra
+// 500,000 Coin that came from the use of increase_elastic.
+coin::deposit(signer::address_of(my_account), returned_coin);
 ```
 
 Then as `Coin<CoinType>`'s are added to the rebase, each of the base parts net coin value will continue to increase.
