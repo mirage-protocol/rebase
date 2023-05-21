@@ -1,7 +1,3 @@
 # Aptos
 /build
 /.aptos
-
-# Misc
-/.idea
-/.DS_Store
