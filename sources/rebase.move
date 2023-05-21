@@ -68,6 +68,12 @@ module rebase::rebase {
         Base { amount: 0 }
     }
 
+    /// Destroy a zero rebase
+    public fun destroy_zero_base(base: Base) {
+        let Base { amount } = base;
+        assert!(amount == 0, error::invalid_argument(ENONZERO_DESTRUCTION));
+    }
+
     /// Merge two base
     public fun merge_base(dst_base: &mut Base, base: Base) {
         let Base { amount } = base;
@@ -196,7 +202,7 @@ module rebase::rebase {
             let new_base_part = ((elastic as u128) * (rebase.base as u128) / (rebase.elastic as u128) as u64);
             if (
                 round_up &&
-                new_base_part != 0 && // => rebase.base > 0
+                new_base_part != 0 &&
                 ((new_base_part as u128) * (rebase.elastic as u128) / (rebase.base as u128) as u64) < elastic
             ) {
                 new_base_part + 1
@@ -215,8 +221,7 @@ module rebase::rebase {
         round_up: bool
     ): u64 {
         // if elastic is 0 the result should clearly be 0
-        // if base is 0 there is no base existing, so any amount is
-        // worth 0 elastic
+        // if base is 0 we add new ownership
         if (rebase.base == 0) {
             base
         } else {
