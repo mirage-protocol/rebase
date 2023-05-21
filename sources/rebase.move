@@ -1,6 +1,8 @@
 /// Elastically rebasing numbers
 module rebase::rebase {
-    use safe64::safe64;
+    use std::error;
+
+    const ENONZERO_DESTRUCTION: u64 = 1;
 
     /// A rebase has an elastic part and a base part
     ///
@@ -52,15 +54,24 @@ module rebase::rebase {
 
     /// Get zero rebase
     public fun zero_rebase(): Rebase {
-        Rebase {
-            elastic: 0,
-            base: 0
-        }
+        Rebase { elastic: 0, base: 0 }
+    }
+
+    /// Destroy a zero rebase
+    public fun destroy_zero(rebase: Rebase) {
+        let Rebase { elastic, base } = rebase;
+        assert!(elastic == 0 && base == 0, error::invalid_argument(ENONZERO_DESTRUCTION));
     }
 
     /// Get a zero value base
     public fun zero_base(): Base {
         Base { amount: 0 }
+    }
+
+    /// Destroy a zero rebase
+    public fun destroy_zero_base(base: Base) {
+        let Base { amount } = base;
+        assert!(amount == 0, error::invalid_argument(ENONZERO_DESTRUCTION));
     }
 
     /// Merge two base
@@ -178,26 +189,27 @@ module rebase::rebase {
     /// increment the entire rebase by new_elastic.
     public fun elastic_to_base(
         rebase: &Rebase,
-        new_elastic: u64,
+        elastic: u64,
         round_up: bool
     ): u64 {
-        let elastic = rebase.elastic;
-        let base = rebase.base;
-
-        let new_base_part: u64;
-        if (elastic == 0 || base == 0) {
-            new_base_part = new_elastic;
+        // if elastic = 0 and base > 0 we want to create new base, note in that situation
+        // the one "buying in" will be giving away some ownership to exisiting Base
+        // if elastic > 0 and base = 0, we want to create a new base part and assign existing
+        // elastic to it. In either instance the result is the same:
+        if (rebase.elastic == 0 || rebase.base == 0) {
+            elastic
         } else {
-            new_base_part = safe64::muldiv_64(new_elastic, base, elastic);
+            let new_base_part = ((elastic as u128) * (rebase.base as u128) / (rebase.elastic as u128) as u64);
             if (
-                new_base_part != 0 &&
                 round_up &&
-                safe64::muldiv_64(new_base_part, elastic, base) < new_elastic
+                new_base_part != 0 &&
+                ((new_base_part as u128) * (rebase.elastic as u128) / (rebase.base as u128) as u64) < elastic
             ) {
-                new_base_part = new_base_part + 1;
-            };
-        };
-        new_base_part
+                new_base_part + 1
+            } else {
+                new_base_part
+            }
+        }
     }
 
     /// Returns the amount of elastic for the given base
@@ -205,28 +217,25 @@ module rebase::rebase {
     /// increment the entire rebase by new_base_part.
     public fun base_to_elastic(
         rebase: &Rebase,
-        new_base_part: u64,
+        base: u64,
         round_up: bool
     ): u64 {
-        let elastic = rebase.elastic;
-        let base = rebase.base;
-
-        let new_elastic: u64;
-        if (base == 0) {
-            new_elastic = new_base_part
-        } else if (elastic == 0) {
-            new_elastic = 0
+        // if elastic is 0 the result should clearly be 0
+        // if base is 0 we add new ownership
+        if (rebase.base == 0) {
+            base
         } else {
-            new_elastic = safe64::muldiv_64(new_base_part, elastic, base);
+            let new_elastic = ((base as u128) * (rebase.elastic as u128) / (rebase.base as u128) as u64);
             if (
-                new_elastic != 0 &&
                 round_up &&
-                safe64::muldiv_64(new_elastic, base, elastic) < new_base_part
+                new_elastic != 0 && // => rebase.elastic > 0
+                ((new_elastic as u128) * (rebase.base as u128) / (rebase.elastic as u128) as u64) < base
             ) {
-                new_elastic = new_elastic + 1;
-            };
-        };
-        new_elastic
+                new_elastic + 1
+            } else {
+                new_elastic
+            }
+        }
     }
 
     ////////////////////////////////////////////////////////////
@@ -234,7 +243,7 @@ module rebase::rebase {
     ////////////////////////////////////////////////////////////
 
     #[test_only]
-    const MAX_U64: u128 = 18446744073709551615;
+    const MAX_U64: u64 = 18446744073709551615;
 
     #[test_only]
     const MAX_U128: u128 = 340282366920938463463374607431768211455;
@@ -277,9 +286,10 @@ module rebase::rebase {
         assert!(base == 20 * high_precision, 1);
     }
 
-    #[test, expected_failure]
+    #[test]
+    #[expected_failure(arithmetic_error, location = Self)]
     fun test_add_elastic_overflow() {
-        let almost_max = ((MAX_U64 - 1) as u64);
+        let almost_max = MAX_U64 - 1;
         let rebase = Rebase { elastic: almost_max, base: almost_max };
         let base = add_elastic(&mut rebase, 1000, false);
         destroy(rebase);
@@ -330,7 +340,8 @@ module rebase::rebase {
         assert!(subbed_elastic == 500, 1);
     }
 
-    #[test, expected_failure]
+    #[test]
+    #[expected_failure(arithmetic_error, location = Self)]
     fun test_sub_base_underflow() {
         let rebase = Rebase { elastic: 1000, base: 10 };
         sub_base(&mut rebase, Base { amount: 1000 }, false);

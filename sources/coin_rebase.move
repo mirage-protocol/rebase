@@ -2,8 +2,6 @@
 module rebase::coin_rebase {
     use aptos_framework::coin::{Self, Coin};
 
-    use safe64::safe64;
-
     /// A rebase with elastic specifically designated as a Coins
     struct CoinRebase<phantom CoinType> has store {
         /// The elastic part can change independant of the base
@@ -172,26 +170,25 @@ module rebase::coin_rebase {
     /// increment the entire rebase by new_elastic.
     public fun elastic_to_base<CoinType>(
         rebase: &CoinRebase<CoinType>,
-        new_elastic: u64,
+        elastic: u64,
         round_up: bool
     ): u64 {
-        let elastic = coin::value(&rebase.elastic);
-        let base = rebase.base;
+        let global_elastic = coin::value(&rebase.elastic);
 
-        let new_base_part: u64;
-        if (elastic == 0 || base == 0) {
-            new_base_part = new_elastic;
+        if (global_elastic == 0 || rebase.base == 0) {
+            elastic
         } else {
-            new_base_part = safe64::muldiv_64(new_elastic, base, elastic);
+            let new_base_part = ((elastic as u128) * (rebase.base as u128) / (global_elastic as u128) as u64);
             if (
-                new_base_part != 0 &&
                 round_up &&
-                safe64::muldiv_64(new_base_part, elastic, base) < new_elastic
+                new_base_part != 0 &&
+                ((new_base_part as u128) * (global_elastic as u128) / (rebase.base as u128) as u64) < elastic
             ) {
-                new_base_part = new_base_part + 1;
-            };
-        };
-        new_base_part
+                new_base_part + 1
+            } else {
+                new_base_part
+            }
+        }
     }
 
     /// Returns the amount of elastic for the given base
@@ -199,28 +196,25 @@ module rebase::coin_rebase {
     /// increment the entire rebase by new_base_part.
     public fun base_to_elastic<CoinType>(
         rebase: &CoinRebase<CoinType>,
-        new_base_part: u64,
+        base: u64,
         round_up: bool
     ): u64 {
         let elastic = coin::value(&rebase.elastic);
-        let base = rebase.base;
 
-        let new_elastic: u64;
-        if (base == 0) {
-            new_elastic = new_base_part
-        } else if (elastic == 0) {
-            new_elastic = 0
+        if (rebase.base == 0) {
+            base
         } else {
-            new_elastic = safe64::muldiv_64(new_base_part, elastic, base);
+            let new_elastic = ((base as u128) * (elastic as u128) / (rebase.base as u128) as u64);
             if (
-                new_elastic != 0 &&
                 round_up &&
-                safe64::muldiv_64(new_elastic, base, elastic) < new_base_part
+                new_elastic != 0 &&
+                ((new_elastic as u128) * (rebase.base as u128) / (elastic as u128) as u64) < base
             ) {
-                new_elastic = new_elastic + 1;
-            };
-        };
-        new_elastic
+                new_elastic + 1
+            } else {
+                new_elastic
+            }
+        }
     }
 
     ////////////////////////////////////////////////////////////
