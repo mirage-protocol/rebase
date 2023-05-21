@@ -2,8 +2,6 @@
 module rebase::coin_rebase {
     use aptos_framework::coin::{Self, Coin};
 
-    use safe64::safe64;
-
     /// A rebase with elastic specifically designated as a Coins
     struct CoinRebase<phantom CoinType> has store {
         /// The elastic part can change independant of the base
@@ -182,11 +180,11 @@ module rebase::coin_rebase {
         if (elastic == 0 || base == 0) {
             new_base_part = new_elastic;
         } else {
-            new_base_part = safe64::muldiv_64(new_elastic, base, elastic);
+            new_base_part = ((new_elastic as u128) * (base as u128) / (elastic as u128) as u64);
             if (
                 new_base_part != 0 &&
                 round_up &&
-                safe64::muldiv_64(new_base_part, elastic, base) < new_elastic
+                ((new_base_part as u128) * (elastic as u128) / (base as u128) as u64) < new_elastic
             ) {
                 new_base_part = new_base_part + 1;
             };
@@ -211,11 +209,11 @@ module rebase::coin_rebase {
         } else if (elastic == 0) {
             new_elastic = 0
         } else {
-            new_elastic = safe64::muldiv_64(new_base_part, elastic, base);
+            new_elastic = ((new_base_part as u128) * (elastic as u128) / (base as u128) as u64);
             if (
                 new_elastic != 0 &&
                 round_up &&
-                safe64::muldiv_64(new_elastic, base, elastic) < new_base_part
+                ((new_elastic as u128) * (base as u128) / (elastic as u128) as u64) < new_base_part
             ) {
                 new_elastic = new_elastic + 1;
             };

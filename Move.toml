@@ -8,9 +8,5 @@ git = "https://github.com/aptos-labs/aptos-core.git"
 subdir = "aptos-move/framework/aptos-framework/"
 rev = "main"
 
-[dependencies.Safe64]
-git = "https://github.com/mirage-protocol/safe64.git"
-rev = "main"
-
 [addresses]
 rebase = "0xf4198d362f5e8ee6eadcf3268eef1f89224ef7826245de1970bf26c07bc2623c"

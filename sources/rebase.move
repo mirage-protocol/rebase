@@ -1,7 +1,5 @@
 /// Elastically rebasing numbers
 module rebase::rebase {
-    use safe64::safe64;
-
     /// A rebase has an elastic part and a base part
     ///
     /// The general idea is that the base part represents ownership
@@ -188,11 +186,11 @@ module rebase::rebase {
         if (elastic == 0 || base == 0) {
             new_base_part = new_elastic;
         } else {
-            new_base_part = safe64::muldiv_64(new_elastic, base, elastic);
+            new_base_part = ((new_elastic as u128) * (base as u128) / (elastic as u128) as u64);
             if (
                 new_base_part != 0 &&
                 round_up &&
-                safe64::muldiv_64(new_base_part, elastic, base) < new_elastic
+                ((new_base_part as u128) * (elastic as u128) / (base as u128) as u64) < new_elastic
             ) {
                 new_base_part = new_base_part + 1;
             };
@@ -217,11 +215,11 @@ module rebase::rebase {
         } else if (elastic == 0) {
             new_elastic = 0
         } else {
-            new_elastic = safe64::muldiv_64(new_base_part, elastic, base);
+            new_elastic = ((new_base_part as u128) * (elastic as u128) / (base as u128) as u64);
             if (
                 new_elastic != 0 &&
                 round_up &&
-                safe64::muldiv_64(new_elastic, base, elastic) < new_base_part
+                ((new_elastic as u128) * (base as u128) / (elastic as u128) as u64) < new_base_part
             ) {
                 new_elastic = new_elastic + 1;
             };
