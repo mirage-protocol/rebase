@@ -1,0 +1,5 @@
+[prover]
+auto_trace_level = "VerifiedFunction"
+
+# Verbosity level
+verbosity_level = "INFO"

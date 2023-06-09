@@ -122,6 +122,10 @@ module rebase::rebase {
         Base { amount: base }
     }
 
+    spec add_elastic {
+        ensures rebase.elastic == old(rebase.elastic) + elastic;
+    }
+
     /// Accepts Base to sub from a rebase
     /// Keeps the amount of elastic per base constant
     /// Returns the amount of elastic that has been destroyed
@@ -135,6 +139,10 @@ module rebase::rebase {
         rebase.elastic = rebase.elastic - elastic;
         rebase.base = rebase.base - amount;
         elastic
+    }
+
+    spec sub_base {
+        ensures rebase.base == old(rebase.base) - base.amount;
     }
 
     /// Accepts an elastic amount to sub from a rebase
@@ -155,6 +163,10 @@ module rebase::rebase {
         rebase.base = rebase.base - base;
         base_to_reduce.amount = base_to_reduce.amount - base;
         base
+    }
+
+    spec sub_elastic {
+        ensures rebase.elastic == old(rebase.elastic) - elastic;
     }
 
     /// Add only to the elastic part of a rebase

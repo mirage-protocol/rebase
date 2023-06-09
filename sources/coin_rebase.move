@@ -80,6 +80,10 @@ module rebase::coin_rebase {
         Base<CoinType> { amount: base }
     }
 
+    spec add_elastic {
+        ensures rebase.elastic.value == old(rebase.elastic.value) + elastic.value;
+    }
+
     /// Accepts Base to sub from a rebase
     /// Keeps the amount of elastic per base constant
     /// Returns the elastic that was removed
@@ -95,6 +99,10 @@ module rebase::coin_rebase {
             &mut rebase.elastic,
             elastic
         )
+    }
+
+    spec sub_base {
+        ensures rebase.base == old(rebase.base) - base.amount;
     }
 
     /// Accepts an elastic amount to sub from a rebase
