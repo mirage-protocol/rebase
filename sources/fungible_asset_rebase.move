@@ -323,13 +323,11 @@ module rebase::fungible_asset_rebase {
     ////////////////////////////////////////////////////////////
     //                        TESTING                         //
     ////////////////////////////////////////////////////////////
-
-    #[test_only]
-    use std::signer;
     #[test_only]
     use std::string;
+
     #[test_only]
-    use aptos_framework::account;
+    use std::option;
 
     #[test_only]
     const PRECISION_8: u64 = 100000000;
@@ -355,7 +353,21 @@ module rebase::fungible_asset_rebase {
         account: &signer,
         amount: u64
     ): FungibleAsset {
-        let (mint_ref, transfer_ref, burn_ref, metadata) = fungible_asset::create_fungible_asset(account);
+        let (constructor_ref, token_object) = fungible_asset::create_test_token(account);
+        fungible_asset::add_fungibility(
+            &constructor_ref,
+            option::none(),
+            string::utf8(b"TEST"),
+            string::utf8(b"@@"),
+            0,
+            string::utf8(b"http://www.example.com/favicon.ico"),
+            string::utf8(b"http://www.example.com"),
+        );
+        let mint_ref = fungible_asset::generate_mint_ref(&constructor_ref);
+        let burn_ref = fungible_asset::generate_burn_ref(&constructor_ref);
+        let transfer_ref = fungible_asset::generate_transfer_ref(&constructor_ref);
+
+        let metadata = object::convert(token_object);
         let mint = fungible_asset::mint(&mint_ref, amount);
         move_to(account, FakeFungibleAssetRefs {
             mint_ref,
@@ -370,110 +382,102 @@ module rebase::fungible_asset_rebase {
 
     #[test_only]
     /// Destroy a base part and get its value
-    fun destroy_base(base: Base): u64 {
-        let Base { metadata: _, amount } = base;
+    fun destroy_base(base: Object<Base>): u64 acquires Base {
+        let Base { amount } = move_from<Base>(object::object_address(&base));
         amount
     }
 
     #[test(account = @rebase)]
-    fun test_zero_rebase(account: &signer) {
+    fun test_zero_rebase(account: &signer) acquires FungibleAssetRebase, FakeFungibleAssetRefs {
         let fa = create_fake_fungible_asset(account, 100 * PRECISION_8);
         let metadata = borrow_global<FakeFungibleAssetRefs>(signer::address_of(account)).metadata;
 
         let constructor_ref = object::create_object(signer::address_of(account));
-        let FungibleAssetRebase { elastic, base } = zero_rebase(&constructor_ref, metadata);
-        assert!(fungible_asset::balance(elastic) == 0, 1);
-        assert!(base == 0, 1);
+        let rebase = zero_rebase(&constructor_ref, metadata);
+        assert!(get_elastic(rebase) == 0, 1);
+        assert!(get_base(rebase) == 0, 1);
 
-        // kill coin
+        // kill fa
         let store = borrow_global<FakeFungibleAssetRefs>(signer::address_of(account)).store;
         fungible_asset::deposit(store, fa);
     }
 
     #[test(account = @rebase)]
-    fun test_add_elastic(account: &signer) {
+    fun test_add_elastic(account: &signer) acquires Base, FungibleAssetRebase, FakeFungibleAssetRefs {
+        let fa = create_fake_fungible_asset(account, 100 * PRECISION_8);
+        let metadata = borrow_global<FakeFungibleAssetRefs>(signer::address_of(account)).metadata;
+
+        let constructor_ref = object::create_object(signer::address_of(account));
+        let rebase = zero_rebase(&constructor_ref, metadata);
+        let base = add_elastic(rebase, fa, false);
+
+        assert!(get_base_amount(base) == 100 * PRECISION_8, 1);
+
+        destroy_base(base);
+
+        assert!(get_elastic(rebase) == 100 * PRECISION_8, 1);
+        assert!(get_base(rebase) == 100 * PRECISION_8, 1);
+   }
+
+    #[test(account = @rebase)]
+    fun test_sub_base(account: &signer) acquires Base, FungibleAssetRebase, FakeFungibleAssetRefs, PermissionConfig {
+        let fa = create_fake_fungible_asset(account, 100 * PRECISION_8);
+        let metadata = borrow_global<FakeFungibleAssetRefs>(signer::address_of(account)).metadata;
+
+        let constructor_ref = object::create_object(signer::address_of(account));
+        let rebase = zero_rebase(&constructor_ref, metadata);
+        let base = add_elastic(rebase, fa, false);
+
+        let half_base = extract_base(
+            base,
+            50 * PRECISION_8
+        );
+
+        destroy_base(base);
+
+        let elastic = sub_base(rebase, half_base, false);
+
+        assert!(fungible_asset::amount(&elastic) == 50 * PRECISION_8, 1);
+        assert!(get_base_amount(base) == 50 * PRECISION_8, 1);
+        assert!(get_elastic(rebase) == 50 * PRECISION_8, 1);
+
+        // kill fa
+        let store = borrow_global<FakeFungibleAssetRefs>(signer::address_of(account)).store;
+        fungible_asset::deposit(store, elastic);
+    }
+
+    #[test(account = @rebase)]
+    fun test_increase_elastic(account: &signer) acquires FakeFungibleAssetRefs, FungibleAssetRebase {
         let fa = create_fake_fungible_asset(account, 100 * PRECISION_8);
         let metadata = borrow_global<FakeFungibleAssetRefs>(signer::address_of(account)).metadata;
 
         let constructor_ref = object::create_object(signer::address_of(account));
         let rebase = zero_rebase(&constructor_ref, metadata);
 
-        let base = add_elastic(rebase, fa, false);
+        increase_elastic(account, rebase, fa);
 
-        assert!(base.amount == 100 * PRECISION_8, 1);
-
-        destroy_base<FakeCoin>(base);
-
-        let CoinRebase { elastic, base } = rebase;
-        assert!(coin::value(&elastic) == 100 * PRECISION_8, 1);
-        assert!(base == 100 * PRECISION_8, 1);
-
-        // kill coin
-        coin::deposit(signer::address_of(account), elastic);
+        assert!(get_elastic(rebase) == 100 * PRECISION_8, 1);
+        assert!(get_base(rebase) == 0, 1);
     }
 
     #[test(account = @rebase)]
-    fun test_sub_base(account: &signer) {
-        let coin = create_fake_coin(account, 100 * PRECISION_8);
+    fun test_decrease_elastic(account: &signer) acquires FungibleAssetRebase, FakeFungibleAssetRefs, PermissionConfig {
+        let fa = create_fake_fungible_asset(account, 100 * PRECISION_8);
+        let metadata = borrow_global<FakeFungibleAssetRefs>(signer::address_of(account)).metadata;
 
-        let rebase = zero_rebase<FakeCoin>();
+        let constructor_ref = object::create_object(signer::address_of(account));
+        let rebase = zero_rebase(&constructor_ref, metadata);
 
-        let base = add_elastic(&mut rebase, coin, false);
+        increase_elastic(account, rebase, fa);
 
-        let half_base = extract_base(
-            &mut base,
-            50 * PRECISION_8
-        );
+        let removed_coin = decrease_elastic(account, rebase, 50 * PRECISION_8);
 
-        destroy_base<FakeCoin>(base);
+        assert!(fungible_asset::amount(&removed_coin) == 50 * PRECISION_8, 1);
+        assert!(get_elastic(rebase) == 50 * PRECISION_8, 1);
+        assert!(get_base(rebase) == 0, 1);
 
-        let elastic = sub_base(&mut rebase, half_base, false);
-
-        let CoinRebase { elastic: rem_elastic, base } = rebase;
-        assert!(coin::value(&elastic) == 50 * PRECISION_8, 1);
-        assert!(base == 50 * PRECISION_8, 1);
-        assert!(coin::value(&rem_elastic) == 50 * PRECISION_8, 1);
-
-        // kill coin
-        coin::deposit(signer::address_of(account), elastic);
-        coin::deposit(signer::address_of(account), rem_elastic);
-    }
-
-    #[test(account = @rebase)]
-    fun test_increase_elastic(account: &signer) {
-        let coin = create_fake_coin(account, 100 * PRECISION_8);
-
-        let rebase = zero_rebase<FakeCoin>();
-
-        increase_elastic(&mut rebase, coin);
-
-        let CoinRebase { elastic, base } = rebase;
-
-        assert!(coin::value(&elastic) == 100 * PRECISION_8, 1);
-        assert!(base == 0, 1);
-
-        // kill coin
-        coin::deposit(signer::address_of(account), elastic);
-    }
-
-    #[test(account = @rebase)]
-    fun test_decrease_elastic(account: &signer) {
-        let coin = create_fake_coin(account, 100 * PRECISION_8);
-
-        let rebase = zero_rebase<FakeCoin>();
-
-        increase_elastic(&mut rebase, coin);
-
-        let removed_coin = decrease_elastic(&mut rebase, 50 * PRECISION_8);
-
-        let CoinRebase { elastic, base } = rebase;
-
-        assert!(coin::value(&removed_coin) == 50 * PRECISION_8, 1);
-        assert!(coin::value(&elastic) == 50 * PRECISION_8, 1);
-        assert!(base == 0, 1);
-
-        // kill coin
-        coin::deposit(signer::address_of(account), elastic);
-        coin::deposit(signer::address_of(account), removed_coin);
+        // kill fa
+        let store = borrow_global<FakeFungibleAssetRefs>(signer::address_of(account)).store;
+        fungible_asset::deposit(store, removed_coin);
     }
 }
