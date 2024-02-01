@@ -353,6 +353,8 @@ module rebase::fungible_asset_rebase {
         account: &signer,
         amount: u64
     ): FungibleAsset {
+        initialize_for_test(account);
+
         let (constructor_ref, token_object) = fungible_asset::create_test_token(account);
         fungible_asset::add_fungibility(
             &constructor_ref,
@@ -438,7 +440,7 @@ module rebase::fungible_asset_rebase {
         let elastic = sub_base(rebase, half_base, false);
 
         assert!(fungible_asset::amount(&elastic) == 50 * PRECISION_8, 1);
-        assert!(get_base_amount(base) == 50 * PRECISION_8, 1);
+        assert!(get_base(rebase) == 50 * PRECISION_8, 1);
         assert!(get_elastic(rebase) == 50 * PRECISION_8, 1);
 
         // kill fa
@@ -479,5 +481,15 @@ module rebase::fungible_asset_rebase {
         // kill fa
         let store = borrow_global<FakeFungibleAssetRefs>(signer::address_of(account)).store;
         fungible_asset::deposit(store, removed_coin);
+    }
+
+    #[test_only]
+    public(friend) fun initialize_for_test(rebase_account: &signer) {
+        let rebase_addr = std::signer::address_of(rebase_account);
+        if (!exists<PermissionConfig>(rebase_addr)) {
+            move_to(rebase_account, PermissionConfig {
+                signer_cap: account::create_test_signer_cap(rebase_addr),
+            });
+        };
     }
 }
