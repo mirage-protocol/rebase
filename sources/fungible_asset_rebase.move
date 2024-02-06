@@ -35,7 +35,7 @@ module rebase::fungible_asset_rebase {
     // Initialize PermissionConfig to establish control over the resource account.
     // This function is invoked only when this package is deployed the first time.
     fun init_module(account: &signer) {
-        let signer_cap = resource_account::retrieve_resource_account_cap(account, @deployer);
+        let signer_cap = resource_account::retrieve_resource_account_cap(account, @protocol_deployer);
         move_to(account, PermissionConfig {
             signer_cap,
         });

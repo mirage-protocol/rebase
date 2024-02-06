@@ -9,5 +9,8 @@ subdir = "aptos-move/framework/aptos-framework/"
 rev = "main"
 
 [addresses]
-rebase = "0xbe14b2c99aee472c1762f7ed158a2892061127a1282e286ebebe67092288831a"
-deployer = "0x30d13332a89b5747478a1685f88f7f4e510bca4633733d1f30c7cd60fd6fe0b4"
+rebase = "_"
+protocol_deployer = "0x30d13332a89b5747478a1685f88f7f4e510bca4633733d1f30c7cd60fd6fe0b4"
+
+[dev-addresses]
+rebase = "0x726562617365"
