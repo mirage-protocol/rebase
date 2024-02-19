@@ -1,7 +1,8 @@
 /// A rebase that stores FungibleAssets
 module rebase::fungible_asset_rebase {
-    use std::signer;
+    use std::error;
     use std::object::{Self, Object, ConstructorRef};
+    use std::signer;
 
     use aptos_framework::account::{Self, SignerCapability};
     use aptos_framework::fungible_asset::{Self, FungibleStore, FungibleAsset, Metadata};
@@ -9,8 +10,8 @@ module rebase::fungible_asset_rebase {
 
     // base isn't owned by rebase
     const EDIFFERENT_REBASE: u64 = 0;
-    const EDIFFERENT_METADATA: u64 = 1;
-    const EINVALID_OWNER: u64 = 2;
+    const ENOT_OWNER: u64 = 2;
+    const ENONZERO_DESTRUCTION: u64 = 2;
 
     /// A rebase with elastic specifically designated as a Coins
     struct FungibleAssetRebase has key {
@@ -22,6 +23,7 @@ module rebase::fungible_asset_rebase {
 
     /// Represents base ownership of a rebase
     struct Base has key {
+        rebase: Object<FungibleAssetRebase>,
         /// The amount of base part
         amount: u64,
     }
@@ -51,20 +53,47 @@ module rebase::fungible_asset_rebase {
             elastic: fungible_asset::create_store(constructor_ref, metadata),
             base: 0
         });
-        object::object_from_constructor_ref(constructor_ref)
+        let rebase_obj = object::object_from_constructor_ref<FungibleAssetRebase>(constructor_ref);
+        rebase_obj
+    }
+
+    public fun destroy_zero(
+        owner: &signer,
+        rebase_obj: Object<FungibleAssetRebase>
+    ) acquires FungibleAssetRebase {
+        assert!(object::owns(rebase_obj, signer::address_of(owner)), ENOT_OWNER);
+        let FungibleAssetRebase { elastic, base } = move_from<FungibleAssetRebase>(object::object_address(&rebase_obj));
+        assert!(fungible_asset::balance(elastic) == 0 && base == 0, error::invalid_argument(ENONZERO_DESTRUCTION));
+    }
+
+    public fun destroy_zero_base(
+        owner: &signer,
+        base_obj: Object<Base>
+    ) acquires Base {
+        assert!(object::owns(base_obj, signer::address_of(owner)), ENOT_OWNER);
+        let Base { rebase: _, amount } = move_from<Base>(object::object_address(&base_obj));
+        assert!(amount == 0, error::invalid_argument(ENONZERO_DESTRUCTION));
     }
 
     /// Get a zero value base
-    public fun zero_base(rebase: Object<FungibleAssetRebase>): Object<Base> {
-        create_base(rebase, 0)
+    public fun zero_base(
+        owner: &signer,
+        rebase_obj: Object<FungibleAssetRebase>
+    ): Object<Base> {
+        assert!(object::owns(rebase_obj, signer::address_of(owner)), ENOT_OWNER);
+        create_base(owner, rebase_obj, 0)
     }
 
     /// Get a new base
-    fun create_base(rebase: Object<FungibleAssetRebase>, amount: u64): Object<Base> {
-        let constructor_ref = object::create_object(object::object_address(&rebase));
+    fun create_base(
+        owner: &signer,
+        rebase: Object<FungibleAssetRebase>,
+        amount: u64
+    ): Object<Base> {
+        let constructor_ref = object::create_object(signer::address_of(owner));
         let base_signer = &object::generate_signer(&constructor_ref);
         // base object is owned by rebase object
-        move_to(base_signer, Base { amount } );
+        move_to(base_signer, Base { rebase, amount } );
         object::object_from_constructor_ref(&constructor_ref)
     }
 
@@ -81,62 +110,89 @@ module rebase::fungible_asset_rebase {
     }
 
     /// Merge two base
-    public fun merge_base(dst_obj: Object<Base>, src_obj: Object<Base>) acquires Base {
-        assert!(object::owner(dst_obj) == object::owner(src_obj), EDIFFERENT_REBASE);
+    public fun merge_base(
+        owner: &signer,
+        dst_obj: Object<Base>,
+        src_obj: Object<Base>
+    ) acquires Base {
+        assert!(object::owner(dst_obj) == signer::address_of(owner), EDIFFERENT_REBASE);
+        assert!(object::owner(src_obj) == signer::address_of(owner), EDIFFERENT_REBASE);
 
-        let Base { amount: src_amount } = move_from(object::object_address(&src_obj));
+        let Base { rebase: src_rebase, amount: src_amount } = move_from(object::object_address(&src_obj));
         let dst_base = borrow_global_mut<Base>(object::object_address(&dst_obj));
+        assert!(dst_base.rebase == src_rebase, EDIFFERENT_REBASE);
         dst_base.amount = dst_base.amount + src_amount;
     }
 
     /// Extract from a base
-    public fun extract_base(dst_obj: Object<Base>, amount: u64): Object<Base> acquires Base {
+    public fun extract_base(
+        owner: &signer,
+        dst_obj: Object<Base>,
+        amount: u64
+    ): Object<Base> acquires Base {
+        assert!(object::owner(dst_obj) == signer::address_of(owner), EDIFFERENT_REBASE);
+
         let dst_base = borrow_global_mut<Base>(object::object_address(&dst_obj));
 
-        let new_obj = create_base(object::address_to_object(object::owner(dst_obj)), amount);
+        let new_obj = create_base(owner, dst_base.rebase, amount);
         dst_base.amount = dst_base.amount - amount;
 
         new_obj
     }
 
     /// Extract all from Base
-    public fun extract_all_base(dst_obj: Object<Base>): Object<Base> acquires Base {
+    public fun extract_all_base(
+        owner: &signer,
+        dst_obj: Object<Base>
+    ): Object<Base> acquires Base {
+        assert!(object::owner(dst_obj) == signer::address_of(owner), EDIFFERENT_REBASE);
         let dst_base = borrow_global_mut<Base>(object::object_address(&dst_obj));
 
         let amount = dst_base.amount;
         dst_base.amount = 0;
 
-        let rebase = object::address_to_object(object::owner(dst_obj));
-        create_base(rebase, amount)
+        create_base(owner, dst_base.rebase, amount)
     }
 
+    #[view]
     /// Get the amount in a Base
     public fun get_base_amount(base_obj: Object<Base>): u64 acquires Base {
         let base = borrow_global_mut<Base>(object::object_address(&base_obj));
         base.amount
     }
 
+    #[view]
     /// Get elastic rebase part
     public fun get_elastic(rebase_obj: Object<FungibleAssetRebase>): u64 acquires FungibleAssetRebase {
         let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&rebase_obj));
         fungible_asset::balance(rebase.elastic)
     }
 
+    #[view]
     /// Get base rebase part
     public fun get_base(rebase_obj: Object<FungibleAssetRebase>): u64 acquires FungibleAssetRebase {
         let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&rebase_obj));
         rebase.base
     }
 
+    #[view]
+    /// Get the base's rebase
+    public fun get_rebase(base_obj: Object<Base>): Object<FungibleAssetRebase> acquires Base {
+        let base = borrow_global_mut<Base>(object::object_address(&base_obj));
+        base.rebase
+    }
+
     /// Add elastic to a rebase
     /// Keeps the amount of elastic per base constant
     /// Returns the newly created Base
     public fun add_elastic(
+        owner: &signer,
         rebase_obj: Object<FungibleAssetRebase>,
         elastic: FungibleAsset,
         round_up: bool
     ): Object<Base> acquires FungibleAssetRebase {
-        assert!(rebase_metadata(rebase_obj) == fungible_asset::metadata_from_asset(&elastic), EDIFFERENT_METADATA);
+        assert!(object::owner(rebase_obj) == signer::address_of(owner), ENOT_OWNER);
+        assert!(rebase_metadata(rebase_obj) == fungible_asset::metadata_from_asset(&elastic), ENOT_OWNER);
 
         let base = elastic_to_base(rebase_obj, fungible_asset::amount(&elastic), round_up);
         let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&rebase_obj));
@@ -145,20 +201,20 @@ module rebase::fungible_asset_rebase {
             elastic
         );
         rebase.base = rebase.base + base;
-        create_base(rebase_obj, base)
+        create_base(owner, rebase_obj, base)
     }
 
     /// Accepts Base to sub from a rebase
     /// Keeps the amount of elastic per base constant
     /// Returns the elastic that was removed
     public fun sub_base(
-        rebase_obj: Object<FungibleAssetRebase>,
+        owner: &signer,
         base_obj: Object<Base>,
         round_up: bool
     ): FungibleAsset acquires Base, FungibleAssetRebase, PermissionConfig {
-        assert!(object::object_address(&rebase_obj) == object::owner(base_obj), EDIFFERENT_REBASE);
+        assert!(object::owner(base_obj) == signer::address_of(owner), ENOT_OWNER);
 
-        let Base { amount } = move_from<Base>(object::object_address(&base_obj));
+        let Base { rebase: rebase_obj, amount } = move_from<Base>(object::object_address(&base_obj));
         let elastic = base_to_elastic(rebase_obj, amount, round_up);
         let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&rebase_obj));
 
@@ -179,17 +235,17 @@ module rebase::fungible_asset_rebase {
     /// The given base_to_reduce must have an amount greater
     /// than the base to be destroyed
     public fun sub_elastic(
-        rebase_obj: Object<FungibleAssetRebase>,
+        owner: &signer,
         base_to_reduce_obj: Object<Base>,
         elastic: u64,
         round_up: bool
     ): (u64, FungibleAsset) acquires Base, FungibleAssetRebase, PermissionConfig {
-        assert!(object::owner(base_to_reduce_obj) == object::object_address(&rebase_obj), EDIFFERENT_REBASE);
+        assert!(object::owner(base_to_reduce_obj) == signer::address_of(owner), ENOT_OWNER);
 
-        let base = elastic_to_base(rebase_obj, elastic, round_up);
-        let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&rebase_obj));
         let base_to_reduce = borrow_global_mut<Base>(object::object_address(&base_to_reduce_obj));
+        let base = elastic_to_base(base_to_reduce.rebase, elastic, round_up);
 
+        let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&base_to_reduce.rebase));
         rebase.base = rebase.base - base;
         base_to_reduce.amount = base_to_reduce.amount - base;
 
@@ -213,7 +269,7 @@ module rebase::fungible_asset_rebase {
         rebase_obj: Object<FungibleAssetRebase>,
         elastic: FungibleAsset,
     ) acquires FungibleAssetRebase {
-        assert!(object::owner(rebase_obj) == signer::address_of(owner), EINVALID_OWNER);
+        assert!(object::owner(rebase_obj) == signer::address_of(owner), ENOT_OWNER);
 
         let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&rebase_obj));
         fungible_asset::deposit(
@@ -229,7 +285,7 @@ module rebase::fungible_asset_rebase {
         rebase_obj: Object<FungibleAssetRebase>,
         elastic: u64
     ): FungibleAsset acquires FungibleAssetRebase, PermissionConfig {
-        assert!(object::owner(rebase_obj) == signer::address_of(owner), EINVALID_OWNER);
+        assert!(object::owner(rebase_obj) == signer::address_of(owner), ENOT_OWNER);
         let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&rebase_obj));
 
         fungible_asset::withdraw(
@@ -243,14 +299,12 @@ module rebase::fungible_asset_rebase {
     /// The amount of elastic per base part will potentially change
     public fun decrease_elastic_and_base(
         owner: &signer,
-        rebase_obj: Object<FungibleAssetRebase>,
         elastic: u64,
         base_obj: Object<Base>,
     ): FungibleAsset acquires Base, FungibleAssetRebase, PermissionConfig {
-        assert!(object::owner(rebase_obj) == signer::address_of(owner), EINVALID_OWNER);
-        assert!(object::owner(base_obj) == object::object_address(&rebase_obj), EDIFFERENT_REBASE);
+        assert!(object::owner(base_obj) == signer::address_of(owner), ENOT_OWNER);
 
-        let Base { amount } = move_from<Base>(object::object_address(&base_obj));
+        let Base { rebase: rebase_obj, amount } = move_from<Base>(object::object_address(&base_obj));
         let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&rebase_obj));
         rebase.base = rebase.base - amount;
         fungible_asset::withdraw(
@@ -387,7 +441,7 @@ module rebase::fungible_asset_rebase {
     #[test_only]
     /// Destroy a base part and get its value
     fun destroy_base(base: Object<Base>): u64 acquires Base {
-        let Base { amount } = move_from<Base>(object::object_address(&base));
+        let Base { rebase: _, amount } = move_from<Base>(object::object_address(&base));
         amount
     }
 
@@ -413,7 +467,7 @@ module rebase::fungible_asset_rebase {
 
         let constructor_ref = object::create_object(signer::address_of(account));
         let rebase = zero_rebase(&constructor_ref, metadata);
-        let base = add_elastic(rebase, fa, false);
+        let base = add_elastic(account, rebase, fa, false);
 
         assert!(get_base_amount(base) == 100 * PRECISION_8, 1);
 
@@ -430,16 +484,17 @@ module rebase::fungible_asset_rebase {
 
         let constructor_ref = object::create_object(signer::address_of(account));
         let rebase = zero_rebase(&constructor_ref, metadata);
-        let base = add_elastic(rebase, fa, false);
+        let base = add_elastic(account, rebase, fa, false);
 
         let half_base = extract_base(
+            account,
             base,
             50 * PRECISION_8
         );
 
         destroy_base(base);
 
-        let elastic = sub_base(rebase, half_base, false);
+        let elastic = sub_base(account, half_base, false);
 
         assert!(fungible_asset::amount(&elastic) == 50 * PRECISION_8, 1);
         assert!(get_base(rebase) == 50 * PRECISION_8, 1);
