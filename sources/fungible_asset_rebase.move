@@ -560,7 +560,7 @@ module rebase::fungible_asset_rebase {
     }
 
     #[test_only]
-    public(friend) fun initialize_for_test(rebase_account: &signer) {
+    public fun initialize_for_test(rebase_account: &signer) {
         let rebase_addr = std::signer::address_of(rebase_account);
         if (!exists<PermissionConfig>(rebase_addr)) {
             move_to(rebase_account, PermissionConfig {
