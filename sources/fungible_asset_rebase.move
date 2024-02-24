@@ -1,7 +1,7 @@
 /// A rebase that stores FungibleAssets
 module rebase::fungible_asset_rebase {
     use std::error;
-    use std::object::{Self, Object, DeleteRef};
+    use std::object::{Self, Object, DeleteRef, ConstructorRef};
     use std::signer;
 
     use aptos_framework::account::{Self, SignerCapability};
@@ -11,16 +11,18 @@ module rebase::fungible_asset_rebase {
     // base isn't owned by rebase
     const EDIFFERENT_REBASE: u64 = 0;
     const ENOT_OWNER: u64 = 2;
-    const ENONZERO_DESTRUCTION: u64 = 2;
+    const ENONZERO_DESTRUCTION: u64 = 3;
 
     /// A rebase with elastic specifically designated as a Coins
     struct FungibleAssetRebase has key {
-        /// The elastic part can change independant of the base
+        /// The elastic part can change independent of the base
         elastic: Object<FungibleStore>,
         /// Base parts represent a fixed portion of the elastic
         base: u64,
         /// DeleteRef for cleaning up object
         delete_ref: DeleteRef,
+        /// address of FA rebase owner
+        owner_addr: address
     }
 
     /// Represents base ownership of a rebase
@@ -48,17 +50,29 @@ module rebase::fungible_asset_rebase {
         });
     }
 
+    fun assert_base_owner(base_obj: Object<Base>, account: &signer) acquires Base, FungibleAssetRebase {
+        let base = borrow_global<Base>(object::object_address(&base_obj));
+        let fa_rebase = borrow_global<FungibleAssetRebase>(object::object_address(&base.rebase));
+        assert(fa_rebase.owner_addr == signer::address_of(account), ENOT_OWNER);
+    }
+
+    fun assert_fa_rebase_owner(rebase_obj: Object<FungibleAssetRebase>, account: &signer) acquires FungibleAssetRebase {
+        let owner_addr = borrow_global<FungibleAssetRebase>(object::object_address(&rebase_obj)).owner_addr;
+        assert(owner_addr == signer::address_of(account), ENOT_OWNER);
+    }
+
     /// Get zero rebase
     public fun zero_rebase<T: key>(
         owner: address,
         metadata: Object<T>
     ): Object<FungibleAssetRebase> {
-        let constructor_ref = object::create_object(owner);
+        let constructor_ref = object::create_object(@rebase);
         let rebase_signer = object::generate_signer(&constructor_ref);
         move_to(&rebase_signer, FungibleAssetRebase {
             elastic: fungible_asset::create_store(&constructor_ref, metadata),
             base: 0,
             delete_ref: object::generate_delete_ref(&constructor_ref),
+            owner_addr: owner,
         });
         let rebase_obj = object::object_from_constructor_ref<FungibleAssetRebase>(&constructor_ref);
         rebase_obj
@@ -68,11 +82,12 @@ module rebase::fungible_asset_rebase {
         owner: &signer,
         rebase_obj: Object<FungibleAssetRebase>
     ) acquires FungibleAssetRebase {
-        assert!(object::owns(rebase_obj, signer::address_of(owner)), ENOT_OWNER);
+        assert_fa_rebase_owner(rebase_obj, owner);
         let FungibleAssetRebase {
             elastic,
             base,
             delete_ref,
+            owner_addr,
         } = move_from<FungibleAssetRebase>(object::object_address(&rebase_obj));
         // rebase must have zero balance
         assert!(fungible_asset::balance(elastic) == 0 && base == 0, error::invalid_argument(ENONZERO_DESTRUCTION));
@@ -85,8 +100,8 @@ module rebase::fungible_asset_rebase {
     public fun destroy_zero_base(
         owner: &signer,
         base_obj: Object<Base>
-    ) acquires Base {
-        assert!(object::owns(base_obj, signer::address_of(owner)), ENOT_OWNER);
+    )  acquires Base, FungibleAssetRebase  {
+        assert_base_owner(base_obj, owner);
         let Base { rebase: _, amount, delete_ref } = move_from<Base>(object::object_address(&base_obj));
         assert!(amount == 0, error::invalid_argument(ENONZERO_DESTRUCTION));
         // delete object
@@ -97,23 +112,23 @@ module rebase::fungible_asset_rebase {
     public fun zero_base(
         owner: &signer,
         rebase_obj: Object<FungibleAssetRebase>
-    ): Object<Base> {
-        assert!(object::owns(rebase_obj, signer::address_of(owner)), ENOT_OWNER);
+    ): Object<Base> acquires FungibleAssetRebase {
+        assert_fa_rebase_owner(rebase_obj, owner);
         create_base(owner, rebase_obj, 0)
     }
 
     /// Get a new base
     fun create_base(
         owner: &signer,
-        rebase: Object<FungibleAssetRebase>,
+        rebase_obj: Object<FungibleAssetRebase>,
         amount: u64
     ): Object<Base> {
-        let constructor_ref = object::create_object(signer::address_of(owner));
+        let constructor_ref = object::create_object(@rebase);
         let base_signer = object::generate_signer(&constructor_ref);
 
-        // base object is owned by rebase object
+        // base object is owned by rebase
         move_to(&base_signer, Base {
-            rebase,
+            rebase: rebase_obj,
             amount,
             delete_ref: object::generate_delete_ref(&constructor_ref),
         } );
@@ -121,8 +136,8 @@ module rebase::fungible_asset_rebase {
     }
 
     #[view]
-    public fun rebase_metadata(rebase: Object<FungibleAssetRebase>): Object<Metadata> acquires FungibleAssetRebase {
-        let elastic = borrow_global<FungibleAssetRebase>(object::object_address(&rebase)).elastic;
+    public fun rebase_metadata(rebase_obj: Object<FungibleAssetRebase>): Object<Metadata> acquires FungibleAssetRebase {
+        let elastic = borrow_global<FungibleAssetRebase>(object::object_address(&rebase_obj)).elastic;
         fungible_asset::store_metadata(elastic)
     }
 
@@ -137,9 +152,9 @@ module rebase::fungible_asset_rebase {
         owner: &signer,
         dst_obj: Object<Base>,
         src_obj: Object<Base>
-    ) acquires Base {
-        assert!(object::owner(dst_obj) == signer::address_of(owner), EDIFFERENT_REBASE);
-        assert!(object::owner(src_obj) == signer::address_of(owner), EDIFFERENT_REBASE);
+    )  acquires Base, FungibleAssetRebase {
+        assert_base_owner(dst_obj, owner);
+        assert_base_owner(src_obj, owner);
 
         let Base { rebase: src_rebase, amount: src_amount, delete_ref: _ } = move_from(object::object_address(&src_obj));
         let dst_base = borrow_global_mut<Base>(object::object_address(&dst_obj));
@@ -152,8 +167,8 @@ module rebase::fungible_asset_rebase {
         owner: &signer,
         dst_obj: Object<Base>,
         amount: u64
-    ): Object<Base> acquires Base {
-        assert!(object::owner(dst_obj) == signer::address_of(owner), EDIFFERENT_REBASE);
+    ): Object<Base>  acquires Base, FungibleAssetRebase {
+        assert_base_owner(dst_obj, owner);
 
         let dst_base = borrow_global_mut<Base>(object::object_address(&dst_obj));
 
@@ -167,8 +182,8 @@ module rebase::fungible_asset_rebase {
     public fun extract_all_base(
         owner: &signer,
         dst_obj: Object<Base>
-    ): Object<Base> acquires Base {
-        assert!(object::owner(dst_obj) == signer::address_of(owner), EDIFFERENT_REBASE);
+    ): Object<Base>  acquires Base, FungibleAssetRebase {
+        assert_base_owner(dst_obj, owner);
         let dst_base = borrow_global_mut<Base>(object::object_address(&dst_obj));
 
         let amount = dst_base.amount;
@@ -214,8 +229,8 @@ module rebase::fungible_asset_rebase {
         elastic: FungibleAsset,
         round_up: bool
     ): Object<Base> acquires FungibleAssetRebase {
-        assert!(object::owner(rebase_obj) == signer::address_of(owner), ENOT_OWNER);
-        assert!(rebase_metadata(rebase_obj) == fungible_asset::metadata_from_asset(&elastic), ENOT_OWNER);
+        assert_fa_rebase_owner(rebase_obj, owner);
+        assert!(rebase_metadata(rebase_obj) == fungible_asset::metadata_from_asset(&elastic), EDIFFERENT_REBASE);
 
         let base = elastic_to_base(rebase_obj, fungible_asset::amount(&elastic), round_up);
         let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&rebase_obj));
@@ -235,7 +250,7 @@ module rebase::fungible_asset_rebase {
         base_obj: Object<Base>,
         round_up: bool
     ): FungibleAsset acquires Base, FungibleAssetRebase, PermissionConfig {
-        assert!(object::owner(base_obj) == signer::address_of(owner), ENOT_OWNER);
+        assert_base_owner(base_obj, owner);
 
         let Base { rebase: rebase_obj, amount, delete_ref: _, } = move_from<Base>(object::object_address(&base_obj));
         let elastic = base_to_elastic(rebase_obj, amount, round_up);
@@ -263,7 +278,7 @@ module rebase::fungible_asset_rebase {
         elastic: u64,
         round_up: bool
     ): (u64, FungibleAsset) acquires Base, FungibleAssetRebase, PermissionConfig {
-        assert!(object::owner(base_to_reduce_obj) == signer::address_of(owner), ENOT_OWNER);
+        assert_base_owner(base_to_reduce_obj, owner);
 
         let base_to_reduce = borrow_global_mut<Base>(object::object_address(&base_to_reduce_obj));
         let base = elastic_to_base(base_to_reduce.rebase, elastic, round_up);
@@ -292,7 +307,7 @@ module rebase::fungible_asset_rebase {
         rebase_obj: Object<FungibleAssetRebase>,
         elastic: FungibleAsset,
     ) acquires FungibleAssetRebase {
-        assert!(object::owner(rebase_obj) == signer::address_of(owner), ENOT_OWNER);
+        assert_fa_rebase_owner(rebase_obj, owner);
 
         let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&rebase_obj));
         fungible_asset::deposit(
@@ -308,7 +323,7 @@ module rebase::fungible_asset_rebase {
         rebase_obj: Object<FungibleAssetRebase>,
         elastic: u64
     ): FungibleAsset acquires FungibleAssetRebase, PermissionConfig {
-        assert!(object::owner(rebase_obj) == signer::address_of(owner), ENOT_OWNER);
+        assert_fa_rebase_owner(rebase_obj, owner);
         let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&rebase_obj));
 
         fungible_asset::withdraw(
@@ -325,7 +340,7 @@ module rebase::fungible_asset_rebase {
         elastic: u64,
         base_obj: Object<Base>,
     ): FungibleAsset acquires Base, FungibleAssetRebase, PermissionConfig {
-        assert!(object::owner(base_obj) == signer::address_of(owner), ENOT_OWNER);
+        assert_base_owner(base_obj, owner);
 
         let Base { rebase: rebase_obj, amount, delete_ref: _ } = move_from<Base>(object::object_address(&base_obj));
         let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&rebase_obj));
@@ -406,7 +421,10 @@ module rebase::fungible_asset_rebase {
     use std::string;
 
     #[test_only]
-    use std::option;
+    use std::option::{Self, Option};
+
+    #[test_only]
+    use aptos_framework::primary_fungible_store;
 
     #[test_only]
     const PRECISION_8: u64 = 100000000;
@@ -424,6 +442,8 @@ module rebase::fungible_asset_rebase {
         burn_ref: fungible_asset::BurnRef,
         metadata: Object<Metadata>,
         store: Object<FungibleStore>,
+        other_metadata: Option<Object<Metadata>>,
+        other_store: Option<Object<FungibleStore>>,
     }
 
 
@@ -456,9 +476,66 @@ module rebase::fungible_asset_rebase {
             burn_ref,
             metadata,
             store: fungible_asset::create_test_store(account, metadata),
+            other_metadata: option::none(),
+            other_store: option::none(),
         });
 
         mint
+    }
+
+    #[test_only]
+    public entry fun create_fake_fungible_assets(
+        account: &signer,
+        amount: u64
+    ): (FungibleAsset) {
+        initialize_for_test(account);
+
+        let (constructor_ref, token_object) = fungible_asset::create_test_token(account);
+        fungible_asset::add_fungibility(
+            &constructor_ref,
+            option::none(),
+            string::utf8(b"TEST"),
+            string::utf8(b"@@"),
+            0,
+            string::utf8(b"http://www.example.com/favicon.ico"),
+            string::utf8(b"http://www.example.com"),
+        );
+        let metadata = object::convert(token_object);
+
+        let constructor_ref_2 = object::create_named_object(
+            account,
+            b"YOLO"
+        );
+
+        primary_fungible_store::create_primary_store_enabled_fungible_asset(
+            &constructor_ref_2,
+            option::none(),
+            string::utf8(b"YOLO"),
+            string::utf8(b"XXX"),
+            0,
+            string::utf8(b"http://www.fail.com/favicon.ico"),
+            string::utf8(b"http://www.fail.com"),
+        );
+
+        let mint_ref = fungible_asset::generate_mint_ref(&constructor_ref_2);
+        let burn_ref = fungible_asset::generate_burn_ref(&constructor_ref_2);
+        let transfer_ref = fungible_asset::generate_transfer_ref(&constructor_ref_2);
+        
+
+        let metadata_2 = object::object_from_constructor_ref<Metadata>(&constructor_ref_2);
+        let mint_2 = fungible_asset::mint(&mint_ref, amount);
+        
+        move_to(account, FakeFungibleAssetRefs {
+            mint_ref,
+            transfer_ref,
+            burn_ref,
+            metadata,
+            store: fungible_asset::create_test_store(account, metadata),
+            other_metadata: option::some(metadata_2),
+            other_store: option::some(fungible_asset::create_test_store(account, metadata_2))
+        });
+
+        (mint_2)
     }
 
     #[test_only]
@@ -497,6 +574,16 @@ module rebase::fungible_asset_rebase {
 
         assert!(get_elastic(rebase) == 100 * PRECISION_8, 1);
         assert!(get_base(rebase) == 100 * PRECISION_8, 1);
+   }
+
+    #[test(rebase_module = @rebase, user = @0xcafe)]
+    #[expected_failure(abort_code = 0, location = rebase::fungible_asset_rebase)]
+    fun test_add_elastic_different_rebase(rebase_module: &signer, user: &signer) acquires FungibleAssetRebase, FakeFungibleAssetRefs {
+        let fa2 = create_fake_fungible_assets(rebase_module, 100 * PRECISION_8);
+        let metadata = borrow_global<FakeFungibleAssetRefs>(@rebase).metadata;
+
+        let rebase = zero_rebase(signer::address_of(user), metadata);
+        let base = add_elastic(user, rebase, fa2, false);
    }
 
     #[test(rebase_module = @rebase, user = @0xcafe)]
