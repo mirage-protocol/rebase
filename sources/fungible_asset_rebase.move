@@ -53,12 +53,12 @@ module rebase::fungible_asset_rebase {
     fun assert_base_owner(base_obj: Object<Base>, account: &signer) acquires Base, FungibleAssetRebase {
         let base = borrow_global<Base>(object::object_address(&base_obj));
         let fa_rebase = borrow_global<FungibleAssetRebase>(object::object_address(&base.rebase));
-        assert(fa_rebase.owner_addr == signer::address_of(account), ENOT_OWNER);
+        assert!(fa_rebase.owner_addr == signer::address_of(account), ENOT_OWNER);
     }
 
     fun assert_fa_rebase_owner(rebase_obj: Object<FungibleAssetRebase>, account: &signer) acquires FungibleAssetRebase {
         let owner_addr = borrow_global<FungibleAssetRebase>(object::object_address(&rebase_obj)).owner_addr;
-        assert(owner_addr == signer::address_of(account), ENOT_OWNER);
+        assert!(owner_addr == signer::address_of(account), ENOT_OWNER);
     }
 
     /// Get zero rebase
