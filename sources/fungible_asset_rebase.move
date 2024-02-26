@@ -1,7 +1,7 @@
 /// A rebase that stores FungibleAssets
 module rebase::fungible_asset_rebase {
     use std::error;
-    use std::object::{Self, Object, DeleteRef, ConstructorRef};
+    use std::object::{Self, Object, DeleteRef};
     use std::signer;
 
     use aptos_framework::account::{Self, SignerCapability};
@@ -87,7 +87,7 @@ module rebase::fungible_asset_rebase {
             elastic,
             base,
             delete_ref,
-            owner_addr,
+            owner_addr: _,
         } = move_from<FungibleAssetRebase>(object::object_address(&rebase_obj));
         // rebase must have zero balance
         assert!(fungible_asset::balance(elastic) == 0 && base == 0, error::invalid_argument(ENONZERO_DESTRUCTION));
@@ -122,7 +122,9 @@ module rebase::fungible_asset_rebase {
         owner: &signer,
         rebase_obj: Object<FungibleAssetRebase>,
         amount: u64
-    ): Object<Base> {
+    ): Object<Base> acquires FungibleAssetRebase {
+        assert_fa_rebase_owner(rebase_obj, owner);
+
         let constructor_ref = object::create_object(@rebase);
         let base_signer = object::generate_signer(&constructor_ref);
 
@@ -583,7 +585,7 @@ module rebase::fungible_asset_rebase {
         let metadata = borrow_global<FakeFungibleAssetRefs>(@rebase).metadata;
 
         let rebase = zero_rebase(signer::address_of(user), metadata);
-        let base = add_elastic(user, rebase, fa2, false);
+        add_elastic(user, rebase, fa2, false);
    }
 
     #[test(rebase_module = @rebase, user = @0xcafe)]
