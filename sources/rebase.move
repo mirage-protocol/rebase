@@ -146,7 +146,7 @@ module rebase::rebase {
     /// than the base to be destroyed
     public fun sub_elastic(
         rebase: &mut Rebase,
-        base_to_reduce: &mut Base,
+        base_to_reduce: &mut Base,  
         elastic: u64,
         round_up: bool
     ): u64 {

@@ -6,6 +6,7 @@ module rebase::fungible_asset_rebase {
 
     use aptos_framework::account::{Self, SignerCapability};
     use aptos_framework::fungible_asset::{Self, FungibleStore, FungibleAsset, Metadata};
+    use aptos_framework::primary_fungible_store;
     use aptos_framework::resource_account;
 
     // base isn't owned by rebase
@@ -17,6 +18,8 @@ module rebase::fungible_asset_rebase {
     struct FungibleAssetRebase has key {
         /// The elastic part can change independent of the base
         elastic: Object<FungibleStore>,
+        /// amount of elastic - tracked manually to prevent issues with errant deposits
+        elastic_amount: u64,
         /// Base parts represent a fixed portion of the elastic
         base: u64,
         /// DeleteRef for cleaning up object
@@ -70,6 +73,7 @@ module rebase::fungible_asset_rebase {
         let rebase_signer = object::generate_signer(&constructor_ref);
         move_to(&rebase_signer, FungibleAssetRebase {
             elastic: fungible_asset::create_store(&constructor_ref, metadata),
+            elastic_amount: 0,
             base: 0,
             delete_ref: object::generate_delete_ref(&constructor_ref),
             owner_addr: owner,
@@ -81,16 +85,27 @@ module rebase::fungible_asset_rebase {
     public fun destroy_zero(
         owner: &signer,
         rebase_obj: Object<FungibleAssetRebase>
-    ) acquires FungibleAssetRebase {
+    ) acquires FungibleAssetRebase, PermissionConfig {
         assert_fa_rebase_owner(rebase_obj, owner);
         let FungibleAssetRebase {
             elastic,
+            elastic_amount,
             base,
             delete_ref,
             owner_addr: _,
         } = move_from<FungibleAssetRebase>(object::object_address(&rebase_obj));
         // rebase must have zero balance
-        assert!(fungible_asset::balance(elastic) == 0 && base == 0, error::invalid_argument(ENONZERO_DESTRUCTION));
+        assert!(elastic_amount == 0 && base == 0, error::invalid_argument(ENONZERO_DESTRUCTION));
+
+        if (fungible_asset::balance(elastic) != 0) {
+            primary_fungible_store::deposit(signer::address_of(owner),         
+                fungible_asset::withdraw(
+                &get_signer(),
+                elastic,
+                fungible_asset::balance(elastic))
+            );
+        };
+
         // remove store
         fungible_asset::remove_store(&delete_ref);
         // delete object
@@ -205,7 +220,7 @@ module rebase::fungible_asset_rebase {
     /// Get elastic rebase part
     public fun get_elastic(rebase_obj: Object<FungibleAssetRebase>): u64 acquires FungibleAssetRebase {
         let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&rebase_obj));
-        fungible_asset::balance(rebase.elastic)
+        rebase.elastic_amount
     }
 
     #[view]
@@ -236,10 +251,12 @@ module rebase::fungible_asset_rebase {
 
         let base = elastic_to_base(rebase_obj, fungible_asset::amount(&elastic), round_up);
         let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&rebase_obj));
+        let added_elastic = fungible_asset::amount(&elastic);
         fungible_asset::deposit(
             rebase.elastic,
             elastic
         );
+        rebase.elastic_amount = rebase.elastic_amount + added_elastic;
         rebase.base = rebase.base + base;
         create_base(owner, rebase_obj, base)
     }
@@ -259,6 +276,7 @@ module rebase::fungible_asset_rebase {
         let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&rebase_obj));
 
         rebase.base = rebase.base - amount;
+        rebase.elastic_amount = rebase.elastic_amount - elastic;
         fungible_asset::withdraw(
             &get_signer(), 
             rebase.elastic,
@@ -287,6 +305,7 @@ module rebase::fungible_asset_rebase {
 
         let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&base_to_reduce.rebase));
         rebase.base = rebase.base - base;
+        rebase.elastic_amount = rebase.elastic_amount - elastic;
         base_to_reduce.amount = base_to_reduce.amount - base;
 
         (
@@ -312,6 +331,8 @@ module rebase::fungible_asset_rebase {
         assert_fa_rebase_owner(rebase_obj, owner);
 
         let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&rebase_obj));
+        let elastic_added = fungible_asset::amount(&elastic);
+        rebase.elastic_amount = rebase.elastic_amount + elastic_added;
         fungible_asset::deposit(
             rebase.elastic,
             elastic
@@ -327,6 +348,7 @@ module rebase::fungible_asset_rebase {
     ): FungibleAsset acquires FungibleAssetRebase, PermissionConfig {
         assert_fa_rebase_owner(rebase_obj, owner);
         let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&rebase_obj));
+        rebase.elastic_amount = rebase.elastic_amount - elastic;
 
         fungible_asset::withdraw(
             &get_signer(),
@@ -347,6 +369,7 @@ module rebase::fungible_asset_rebase {
         let Base { rebase: rebase_obj, amount, delete_ref: _ } = move_from<Base>(object::object_address(&base_obj));
         let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&rebase_obj));
         rebase.base = rebase.base - amount;
+        rebase.elastic_amount = rebase.elastic_amount - elastic;
         fungible_asset::withdraw(
             &get_signer(),
             rebase.elastic,
@@ -364,7 +387,7 @@ module rebase::fungible_asset_rebase {
         round_up: bool
     ): u64 acquires FungibleAssetRebase {
         let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&rebase_obj));
-        let global_elastic = fungible_asset::balance(rebase.elastic);
+        let global_elastic = rebase.elastic_amount;
 
         if (global_elastic == 0 || rebase.base == 0) {
             elastic
@@ -392,7 +415,7 @@ module rebase::fungible_asset_rebase {
         round_up: bool
     ): u64 acquires FungibleAssetRebase {
         let rebase = borrow_global_mut<FungibleAssetRebase>(object::object_address(&rebase_obj));
-        let elastic = fungible_asset::balance(rebase.elastic);
+        let elastic = rebase.elastic_amount;
 
         if (rebase.base == 0) {
             base
@@ -424,9 +447,6 @@ module rebase::fungible_asset_rebase {
 
     #[test_only]
     use std::option::{Self, Option};
-
-    #[test_only]
-    use aptos_framework::primary_fungible_store;
 
     #[test_only]
     const PRECISION_8: u64 = 100000000;
