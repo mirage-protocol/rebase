@@ -12,4 +12,4 @@ rev = "main"
 rebase = "_"
 
 [dev-addresses]
-rebase = "0xbe14b2c99aee472c1762f7ed158a2892061127a1282e286ebebe67092288831a"
+rebase = "0x4000"
