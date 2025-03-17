@@ -6,7 +6,7 @@ upgrade_policy = "immutable"
 [dependencies.AptosFramework]
 git = "https://github.com/aptos-labs/aptos-core.git"
 subdir = "aptos-move/framework/aptos-framework/"
-rev = "main"
+rev = "aptos-release-v1.16"
 
 [addresses]
 rebase = "_"
